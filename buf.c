@@ -301,6 +301,6 @@ buf_clear (void)
         initial_updates_next = &initial_updates[i];
         delta_updates_next = &delta_updates[i];
     }
-    
+
     total_msg_size = 0;
 }

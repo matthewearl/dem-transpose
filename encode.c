@@ -56,6 +56,131 @@ enc_read_cd_string (void)
 }
 
 
+#define CHECK_RC(expr)                  \
+    do {                                \
+        dp_err_t __rc;                  \
+        __rc = (expr);                  \
+        if (__rc != DP_ERR_SUCCESS) {   \
+            return __rc;                \
+        }                               \
+    } while(false);
+
+
+static tp_err_t
+enc_read_uint16 (uint16_t *out)
+{
+    uint16_t s;
+
+    CHECK_RC(read_in(&s, sizeof(uint16_t)));
+    *out = le16toh(s);
+
+    return TP_ERR_SUCCESS;
+}
+
+
+static tp_err_t
+enc_parse_update(void *buf, void *buf_end, update_t *baselines, int *out_len,
+                 update_t *out_update, int *out_entity_num)
+{
+    uint32_t flags;
+    byte more_flags, extend1_flags, extend2_flags;
+    unsigned int flags = base_flags;
+    int entity_num;
+    update_t update = {};
+
+    flags = (*(uint8_t *)buf) & 0x7f;
+    if (flags & U_MOREBITS) {
+        CHECK_RC(read_in(&more_flags, 1));
+        flags |= more_flags << 8;
+    }
+    if (flags & U_EXTEND1) {
+        CHECK_RC(read_in(&extend1_flags, 1));
+        flags |= extend1_flags << 16;
+    }
+    if (flags & U_EXTEND2) {
+        CHECK_RC(read_in(&extend2_flags, 1));
+        flags |= extend2_flags << 24;
+    }
+    update.flags = flags;
+
+    if (flags & U_LONGENTITY) {
+        uint16_t entity_num_s;
+        CHECK_RC(read_uint16(&entity_num_s));
+        entity_num = entity_num_s;
+    } else {
+        uint8_t entity_num_b;
+        CHECK_RC(read_in(&entity_num_b, 1));
+        entity_num = entity_num_b;
+    }
+
+    if (flags & U_MODEL) {
+        uint8_t model_num_b;
+        CHECK_RC(read_in(&model_num_b, 1));
+        update.model_num = model_num_b;
+    }
+
+    if (flags & U_FRAME) {
+        uint8_t frame_b;
+        CHECK_RC(read_in(&frame_b, 1));
+        update.frame = frame_b;
+    }
+    if (flags & U_COLORMAP) {
+        uint8_t colormap_b;
+        CHECK_RC(read_in(&colormap_b, 1));
+        update.colormap = colormap_b;
+    }
+    if (flags & U_SKIN) {
+        uint8_t skin_b;
+        CHECK_RC(read_in(&skin_b, 1));
+        update.skin = skin_b;
+    }
+    if (flags & U_EFFECTS) {
+        uint8_t effects_b;
+        CHECK_RC(read_in(&effects_b, 1));
+        update.effects = effects_b;
+    }
+    if (flags & U_ORIGIN1) {
+        uint16_t coord;
+        CHECK_RC(read_uint16(&coord));
+        update.origin1 = entity_num_s;
+    }
+    if (flags & U_ANGLE1) {
+        uint8_t angle_b;
+        CHECK_RC(read_in(&effects_b, 1));
+        update.angle1 = angle_b;
+    }
+    if (flags & U_ORIGIN2) {
+        uint16_t coord;
+        CHECK_RC(read_uint16(&coord));
+        update.origin2 = entity_num_s;
+    }
+    if (flags & U_ANGLE2) {
+        uint8_t angle_b;
+        CHECK_RC(read_in(&effects_b, 1));
+        update.angle2 = angle_b;
+    }
+    if (flags & U_ORIGIN3) {
+        uint16_t coord;
+        CHECK_RC(read_uint16(&coord));
+        update.origin3 = entity_num_s;
+    }
+    if (flags & U_ANGLE3) {
+        uint8_t angle_b;
+        CHECK_RC(read_in(&effects_b, 1));
+        update.angle3 = angle_b;
+    }
+    // TODO: finish this off
+}
+
+
+static tp_err_t
+enc_parse_baseline (void *buf, void *buf_end, int version, int *out_len,
+                    update_t *out_baselines)
+{
+    // TODO: implement this.
+}
+
+
 static tp_err_t
 enc_read_packet_header (uint8_t *out_header, uint32_t *out_packet_len,
                         void *out_packet)
@@ -118,12 +243,12 @@ enc_flush(void)
     for (i = 0; i < 2; i++) {
         delta = (i == 1);
         FLUSH_FIELD(model_num, delta);
-        FLUSH_FIELD(origin0, delta);
         FLUSH_FIELD(origin1, delta);
         FLUSH_FIELD(origin2, delta);
-        FLUSH_FIELD(angle0, delta);
+        FLUSH_FIELD(origin3, delta);
         FLUSH_FIELD(angle1, delta);
         FLUSH_FIELD(angle2, delta);
+        FLUSH_FIELD(angle3, delta);
         FLUSH_FIELD(frame, delta);
         FLUSH_FIELD(color_map, delta);
         FLUSH_FIELD(skin, delta);
@@ -146,7 +271,6 @@ enc_compress_message(void *buf, void *buf_end, void *out_buf,
     uint8_t cmd;
     int msg_len;
     int entity_num;
-    uint8_t stub_update[3];
     update_t update;
     bool delta;
     bool has_update = *out_has_update;
@@ -161,8 +285,8 @@ enc_compress_message(void *buf, void *buf_end, void *out_buf,
             // Updates are parsed, stubs are written, and the updates themselves
             // are added to the update lists ready to be transposed.
             has_update = true;
-            rc = parse_update(buf, buf_end, baselines, &msg_len, &update,
-                              &entity_num);
+            rc = enc_parse_update(buf, buf_end, baselines, &msg_len, &update,
+                                  &entity_num);
             if (rc == TP_ERR_SUCCESS) {
                 memcpy(&updates[entity_num], &update, sizeof(update_t));
                 in_packet[entity_num] = true;
@@ -195,9 +319,9 @@ enc_compress_message(void *buf, void *buf_end, void *out_buf,
             }
         } else if (cmd == svc_spawnbaseline || cmd == svc_spawnbaseline2) {
             // Baseline messages are parsed and then copied verbatim.
-            rc = parse_baseline(buf, buf_end,
-                                cmd == svc_spawnbaseline ? 1 : 2,
-                                &msg_len, baselines);
+            rc = enc_parse_baseline(buf, buf_end,
+                                    cmd == svc_spawnbaseline ? 1 : 2,
+                                    &msg_len, baselines);
             if (rc == TP_ERR_SUCCESS) {
                 rc = buf_add_message(buf, msg_len);
                 if (rc == TP_ERR_BUFFER_FULL) {

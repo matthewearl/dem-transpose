@@ -21,12 +21,12 @@ typedef struct __attribute__((__packed__)) update_s {
     struct update_s *next;  // link to next update with same entity
 
     uint16_t model_num;
-    uint16_t origin0;
     uint16_t origin1;
     uint16_t origin2;
-    uint8_t angle0;
+    uint16_t origin3;
     uint8_t angle1;
     uint8_t angle2;
+    uint8_t angle3;
     uint16_t frame;
     uint8_t color_map;
     uint8_t skin;

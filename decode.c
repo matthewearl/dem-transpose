@@ -154,27 +154,26 @@ dec_emit_update (int entity_num)
         write_out(&update->effects, 1);
     }
     if (flags & U_ORIGIN1) {
-        uint16_t coord = htole16(update->origin0);
-        write_out(&coord, 2);
-    }
-    if (flags & U_ORIGIN2) {
         uint16_t coord = htole16(update->origin1);
         write_out(&coord, 2);
     }
-    if (flags & U_ORIGIN3) {
+    if (flags & U_ANGLE1) {
+        write_out(&update->angle1, 1);
+    }
+    if (flags & U_ORIGIN2) {
         uint16_t coord = htole16(update->origin2);
         write_out(&coord, 2);
     }
-    if (flags & U_ANGLE1) {
-        write_out(&update->angle0, 1);
-    }
     if (flags & U_ANGLE2) {
-        write_out(&update->angle1, 1);
-    }
-    if (flags & U_ANGLE3) {
         write_out(&update->angle2, 1);
     }
-
+    if (flags & U_ORIGIN3) {
+        uint16_t coord = htole16(update->origin3);
+        write_out(&coord, 2);
+    }
+    if (flags & U_ANGLE3) {
+        write_out(&update->angle3, 1);
+    }
     if (flags & U_ALPHA) {
         write_out(&update->effects, 1);
     }

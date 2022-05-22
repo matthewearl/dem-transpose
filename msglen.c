@@ -49,15 +49,15 @@ msglen_serverinfo(void *buf, void *buf_end, void **msg_end)
 	buf += 6;
 
 	str_len = -1;
-	while (rc == 0 && str_len != 0) {
+	while (rc == TP_ERR_SUCCESS && str_len != 0) {
 		rc = msglen_string(buf, buf_end, &buf);
 	}
 	str_len = -1;
-	while (rc == 0 && str_len != 0) {
+	while (rc == TP_ERR_SUCCESS && str_len != 0) {
 		rc = msglen_string(buf, buf_end, &buf);
 	}
 
-	if (rc == 0) {
+	if (rc == TP_ERR_SUCCESS) {
 		*msg_end = buf;
 	}
 
@@ -163,11 +163,11 @@ msglen_clientdata (void *buf, void *buf_end, void **msg_end)
 static tp_err_t
 msglen_spawnstatic (void *buf, void *buf_end, void **msg_end, int version)
 {
-	uchar bits = 0;
+	uint8_t bits = 0;
 
 	if (version == 2) {
 		if (buf + 1 > buf_end) return TP_ERR_NOT_ENOUGH_INPUT;
-		bits = *(uchar *)buf;
+		bits = *(uint8_t *)buf;
 		buf ++;
 	}
 
@@ -235,7 +235,7 @@ static int (* const msglen_message[])(void) = {
 
 /* 2.10: removed all the dem_* functions that just did
 	copy_msg(#) and replaced with this */
-static const uchar msglen_copy[] = {
+static const uint8_t msglen_copy[] = {
 	1, 1, 6, 5, 3, 0, 5, 0, 0, 4, 0, 0, 0, 4, 0, 3,
 	3,12, 9,14, 1, 0, 0, 2, 2, 0, 1, 1,10, 1, 0, 3,
 	1, 0, 0, 0, 0,
@@ -245,18 +245,18 @@ static const uchar msglen_copy[] = {
 
 // Read a message at `msg`.  The message can be of any type, except for
 // update.  Returns non-zero if the true length exceeds the buffer length.
-int
-msglen_get_length (void *buf, void *buf_end, int out_len)
+tp_err_t
+msglen_get_length(void *buf, void *buf_end, int *out_len);
 {
 	tp_err_t rc = 0;
 	void *buf_start = buf;
-	uchar cmd;
+	uint8_t cmd;
 
 	if (buf >= buf_end) {
 		return TP_ERR_SUCCESS;
 	}
 
-	cmd = *(uchar *)buf;
+	cmd = *(uint8_t *)buf;
 	buf++;
 	if (cmd > 0 && cmd <= TP_NUM_DEM_COMMANDS) {
 		if (msglen_copy[cmd - 1]) {
@@ -270,7 +270,7 @@ msglen_get_length (void *buf, void *buf_end, int out_len)
 		}
 	}
 
-	if (rc == 0) {
+	if (rc == TP_ERR_SUCCESS) {
 		*out_len = buf - buf_start;
 	}
 
