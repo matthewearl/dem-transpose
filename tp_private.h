@@ -10,10 +10,11 @@
 #define TP_MSG_TYPE_UPDATE_INITIAL     0x80
 #define TP_MSG_TYPE_UPDATE_DELTA       0x81
 
-
 // 1 + maximum svc_* value from quakedef.h
 #define TP_NUM_DEM_COMMANDS            57
 
+// Flag for updates that have not yet been populated
+#define TP_U_INVALID                   (1 << 31)
 
 // Internal representation of updates, or update deltas.
 typedef struct __attribute__((__packed__)) update_s {

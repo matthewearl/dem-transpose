@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -21,21 +22,11 @@ static int total_msg_size = 0;
 tp_err_t
 buf_init (void)
 {
-    int i;
-
     buf = malloc(BUFFER_MAX_SIZE);
     if (buf == NULL) {
         return TP_ERR_NO_MEM;
     }
-    ptr = buf;
     buf_end = buf + BUFFER_MAX_SIZE;
-    memset(initial_updates, 0, sizeof(initial_updates));
-    memset(delta_updates, 0, sizeof(initial_updates));
-
-    for (i = 0; i < MAX_ENT; i++) {
-        initial_updates_next = &initial_updates[i];
-        delta_updates_next = &delta_updates[i];
-    }
 
     return TP_ERR_SUCCESS;
 }
@@ -63,6 +54,7 @@ buf_add_packet_header (void *header)
     *(uint8_t *)ptr = MSG_TYPE_PACKET_HEADER;
     memcpy(ptr + 1, header, 16);
     ptr += 17;
+    total_msg_size += 17;
 }
 
 
@@ -73,8 +65,9 @@ buf_add_message (void *msg, int msg_len)
         return TP_ERR_BUFFER_FULL;
     }
 
-    memcpy(ptr, msg, msg_len);
+    memmove(ptr, msg, msg_len);
     ptr += msg_len;
+    total_msg_size += msg_len;
 
     return TP_ERR_SUCCESS;
 }
@@ -104,6 +97,9 @@ buf_add_update (update_t *update, int entity_num, bool delta)
         *initial_updates_next[entity_num] = dest_update;
         initial_updates_next[entity_num] = &dest_update->next;
     }
+
+    ptr += 3 + sizeof(update_t);
+    total_msg_size += 3;
 
     return TP_ERR_SUCCESS;
 }
@@ -138,7 +134,7 @@ buf_next_update (buf_update_iter_t *iter, update_t **out_update);
         *out_update = iter->next;
         iter->next = iter->next->next;
     } else {
-        *out_update = NULL;
+        *dout_update = NULL;
     }
 }
 
@@ -147,6 +143,30 @@ void
 buf_iter_messages (buf_msg_iter_t *out_iter)
 {
     out_iter->ptr = buf;
+}
+
+
+static void
+buf_get_internal_message_length (void *buf, void *buf_end, bool stub_update,
+                                 int *out_len)
+{
+    uint8_t cmd = *(uint8_t *)buf;
+
+    if (cmd == TP_MSG_TYPE_UPDATE_INITIAL
+            || cmd == TP_MSG_TYPE_UPDATE_DELTA) {
+        if (stub_update) {
+            *out_len = 3;
+        } else {
+            *out_len = 3 + sizeof(update_t);
+        }
+    } else if (cmd == TP_MSG_TYPE_PACKET_HEADER) {
+        *out_len = 17;
+    } else if (cmd > 0 && cmd < TP_NUM_DEM_COMMANDS) {
+        rc = msglen_get_length(iter->ptr, ptr, out_len);
+        assert(rc == TP_ERR_SUCCESS);
+    } else {
+        assert(!"Invalid internal message type");
+    }
 }
 
 
@@ -161,36 +181,29 @@ buf_next_message (buf_msg_iter_t *iter, void **out_msg, int *out_len)
         *out_msg = NULL;
         out_len = 0;
     } else {
-        cmd = *(uint8_t *)iter->ptr;
-
-        if (cmd == TP_MSG_TYPE_UPDATE_INITIAL
-                || cmd == TP_MSG_TYPE_UPDATE_DELTA) {
-            msg_len = 3 + sizeof(update_t);
-        } else if (cmd == TP_MSG_TYPE_PACKET_HEADER) {
-            msg_len = 17;
-        } else if (cmd > 0 && cmd < TP_NUM_DEM_COMMANDS) {
-            rc = msglen_get_length(iter->ptr, ptr, &msg_len);
-            assert(rc == TP_ERR_SUCCESS);
-        } else {
-            assert(!"Invalid internal message type");
-        }
+        buf_get_internal_message_length(iter->ptr, ptr, false, &msg_len);
 
         *out_msg = iter->ptr;
         *out_len = msg_len;
-
         iter->ptr += msg_len;
         assert(iter->ptr <= ptr);
     }
 }
 
 
+// Write messages from the internal buffer to disk.  This is part of the
+// encoding process.
 void
-buf_write_messages(void)
+buf_write_messages (void)
 {
     uint8_t cmd;
     buf_msg_iter_t it;
     void *msg;
     int msg_len;
+    uint32_t total_msg_size_le;
+
+    total_msg_size_le = htole32(total_msg_size);
+    write_out(&total_msg_size_le, sizeof(total_msg_size_le));
 
     buf_iter_messages(&it);
     buf_next_message(&it, &msg, &msg_len);
@@ -198,10 +211,96 @@ buf_write_messages(void)
         assert(msg_len >= 1);
         cmd = *(uint8_t *)msg;
 
-        // TODO: finish writing this
+        if (cmd == TP_MSG_TYPE_UPDATE_DELTA
+                || cmd == TP_MSG_TYPE_UPDATE_INITIAL) {
+            // Don't write the update_t, just the command and entity num
+            assert(msg_len >= 3);
+            write_out(msg, 3);
+        } else if ((cmd > 0 && cmd < TP_NUM_DEM_COMMANDS) 
+                    || cmd == TP_MSG_TYPE_PACKET_HEADER) {
+            // Otherwise, verbatim dump the entire command.
+            write_out(cmd, msg_len);
+        }
 
         buf_next_message(&it, &msg, &msg_len);
     }
 }
 
-// TODO:  finish writing the rest of the definitions.
+
+tp_err_t
+buf_read_messages (void)
+{
+    int msg_len;
+    void *read_ptr;
+
+    // Check module is initialized but buffer is empty.
+    assert(total_msg_size == 0);
+    assert(buf == ptr);
+    assert(buf != NULL);
+
+    read_in(total_msg_size);
+    total_msg_size = le32toh(total_message_size);
+
+    if (buf + total_msg_size > buf_end) {
+        return TP_ERR_BUFFER_FULL;
+    }
+
+    // Read into the end of the buffer to start with, then move to the start,
+    // inserting update_t messages along the way.
+    read_ptr = buf_end - total_message_size;
+    read_in(read_ptr, total_message_size);
+
+    while (read_ptr < buf_end) {
+        buf_get_internal_message_length(iter->ptr, ptr, true, &msg_len);
+
+        if (cmd == TP_MSG_TYPE_UPDATE_DELTA
+                || cmd == TP_MSG_TYPE_UPDATE_INITIAL) {
+            uint16_t entity_num_s;
+            update_t update = {.flags = TP_U_INVALID};
+            assert(msg_len == 3);
+
+            rc = read_in(&entity_num_s, 2);
+            if (rc != TP_ERR_SUCCESS) {
+                return rc;
+            }
+            entity_num_s = le16toh(entity_num_s);
+
+            rc = buf_add_update(&update, entity_num_s,
+                                cmd == TP_MSG_TYPE_UPDATE_DELTA);
+            if (rc != TP_ERR_SUCCESS) {
+                return rc;
+            }
+        } else {
+            rc = buf_add_message(read_ptr, msg_len);
+            if (rc != TP_ERR_SUCCESS) {
+                return rc;
+            }
+        }
+
+        if (ptr > read_ptr) {
+            return TP_ERR_BUFFER_FULL;
+        }
+
+        read_ptr += msg_len;
+    }
+
+    return TP_ERR_SUCCESS;
+}
+
+
+void
+buf_clear (void)
+{
+    int i;
+
+    ptr = buf;
+    memset(initial_updates, 0, sizeof(initial_updates));
+    memset(delta_updates, 0, sizeof(initial_updates));
+
+    for (i = 0; i < MAX_ENT; i++) {
+        initial_updates_next = &initial_updates[i];
+        delta_updates_next = &delta_updates[i];
+    }
+    
+    total_msg_size = 0;
+}

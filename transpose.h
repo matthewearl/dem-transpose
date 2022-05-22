@@ -14,7 +14,8 @@
     F(TP_ERR_BUFFER_FULL)          \
     F(TP_ERR_NOMEM)                \
     F(TP_ERR_USAGE)                \
-    F(TP_ERR_BAD_CD_STRING)
+    F(TP_ERR_BAD_CD_STRING)        \
+    F(TP_ERR_UNSUPPORTED)
 
 #define TP_GENERATE_ENUM(ENUM) ENUM,
 #define TP_GENERATE_STRING(STRING) #STRING,
@@ -24,13 +25,11 @@ typedef enum {
 } tp_err_t;
 
 
-// Read demo from `infile` and write compressed demo with `dzWrite`.
-// `len` is the maximum amount that should be read.
-tp_err_t tp_compress (void);
+// Read demo from input file and write encoded demo to output file.
+tp_err_t tp_encode (void);
 
 
-// Read compressed demo from from ??? and write demo with `Outfile_Write`.
-// `len` is the size of the decompressed file.
-tp_err_t tp_decompress (void);
+// Read encoded demo from input file and write demo to output file.
+tp_err_t tp_decode (void);
 
 #endif /* __TRANSPOSE_H */
