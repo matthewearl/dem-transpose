@@ -1,0 +1,15 @@
+add_executable(dem_transpose
+    buf.c
+    buf.h
+    decode.c
+    encode.c
+    encode.h
+    main.c
+    main.h
+    msglen.h
+    parse.h
+    private.h
+    quakedef.h
+    tp_private.h
+    transpose.h
+)
