@@ -507,11 +507,10 @@ tp_encode (void)
                 rc = enc_compress_message(ptr, packet_end, &ptr,
                                           &has_update);
             }
-
-            if (rc == TP_ERR_SUCCESS && has_update) {
-                memcpy(last_updates, updates, sizeof(last_updates));
-                memcpy(in_last_packet, in_packet, sizeof(last_updates));
-            }
+        }
+        if (rc == TP_ERR_SUCCESS && has_update) {
+            memcpy(last_updates, updates, sizeof(last_updates));
+            memcpy(in_last_packet, in_packet, sizeof(last_updates));
         }
     }
 
