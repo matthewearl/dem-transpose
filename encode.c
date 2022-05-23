@@ -238,6 +238,7 @@ enc_parse_update(void *buf, void *buf_end, update_t *baselines, int *out_len,
 
     memcpy(out_update, &update, sizeof(update_t));
     *out_entity_num = entity_num;
+    *out_len = buf - start_buf;
 
     return TP_ERR_SUCCESS;
 }
@@ -246,7 +247,6 @@ enc_parse_update(void *buf, void *buf_end, update_t *baselines, int *out_len,
 static tp_err_t
 enc_parse_baseline (void *buf, void *buf_end, int version, int *out_len)
 {
-    int i;
     uint16_t entity_num;
     uint8_t flags = 0;
     update_t *update;
@@ -311,6 +311,8 @@ enc_read_packet_header (uint8_t *out_header, uint32_t *out_packet_len,
         return rc;
     }
     *out_packet_len = packet_len;
+
+    return TP_ERR_SUCCESS;
 }
 
 
@@ -335,17 +337,14 @@ enc_flush(void)
 {
     int i;
     bool delta;
-    int entity_num = -1;
-    update_t *update;
-    void *msg;
-    int msg_len;
-    buf_msg_iter_t it;
 
     // Write out the messages.
     buf_write_messages();
 
-#define FLUSH_FIELD(x, y)  \
-    enc_flush_field(offsetof(update_t, x), sizeof(update->x), (y))
+#define FLUSH_FIELD(x, y)                           \
+    enc_flush_field(offsetof(update_t, x),          \
+                    sizeof(((update_t *)NULL)->x),  \
+                    (y))
 
     // Write out the initial values (first iter) then the deltas (second iter).
     for (i = 0; i < 2; i++) {

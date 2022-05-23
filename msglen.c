@@ -16,8 +16,10 @@ msglen_sound(void *buf, void *buf_end, void **msg_end)
 
     if (mask & SND_VOLUME) buf ++;
     if (mask & SND_ATTENUATION) buf++;
-    if (mask & SND_LARGEENTITY) buf++; buf += 2;
-    if (mask & SND_LARGESOUND) buf++; buf++;
+    if (mask & SND_LARGEENTITY) buf++;
+    buf += 2;
+    if (mask & SND_LARGESOUND) buf++;
+    buf++;
     buf += 6; // coords
 
     if (buf > buf_end) return TP_ERR_NOT_ENOUGH_INPUT;
@@ -88,9 +90,8 @@ msglen_serverinfo(void *buf, void *buf_end, void **msg_end)
 static tp_err_t
 msglen_bytestring (void *buf, void *buf_end, void **msg_end)
 {
-    tp_err_t rc = 0;
-
-    if (buf + 1 > buf_end) return TP_ERR_NOT_ENOUGH_INPUT;
+    if (buf + 1 > buf_end)
+        return TP_ERR_NOT_ENOUGH_INPUT;
     buf++;
 
     return msglen_string(buf, buf_end, msg_end);
@@ -127,7 +128,6 @@ msglen_temp_entity (void *buf, void *buf_end, void **msg_end)
 static tp_err_t
 msglen_clientdata (void *buf, void *buf_end, void **msg_end)
 {
-    uint8_t extend1_flags, extend2_flags;
     uint32_t flags;
     int skip;
 
@@ -200,13 +200,6 @@ msglen_spawnstatic (void *buf, void *buf_end, void **msg_end, int version)
     if (buf > buf_end) return TP_ERR_NOT_ENOUGH_INPUT;
     *msg_end = buf;
     return TP_ERR_SUCCESS;
-}
-
-
-static tp_err_t
-msglen_spawnstatic_v1 (void *buf, void *buf_end, void **msg_end)
-{
-    return msglen_spawnstatic(buf, buf_end, msg_end, 1);
 }
 
 

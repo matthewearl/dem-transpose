@@ -266,7 +266,6 @@ tp_err_t
 tp_decode (void)
 {
     tp_err_t rc;
-    uint32_t total_msg_size;
 
     rc = dec_read_cd_string();
     while (rc == TP_ERR_SUCCESS) {

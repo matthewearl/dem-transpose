@@ -58,6 +58,8 @@ buf_add_packet_header (void *header)
     memcpy(ptr + 1, header, 16);
     ptr += 17;
     total_message_size += 17;
+
+    return TP_ERR_SUCCESS;
 }
 
 
@@ -188,7 +190,6 @@ void
 buf_next_message (buf_msg_iter_t *iter, void **out_msg, int *out_len)
 {
     tp_err_t rc;
-    uint8_t cmd;
     int msg_len;
 
     if (iter->ptr >= ptr) {

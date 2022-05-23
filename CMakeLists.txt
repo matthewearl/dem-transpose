@@ -1,5 +1,5 @@
 project(dem-transpose)
-set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror -Wall -O0 -ggdb")
 add_executable(dem_transpose
     buf.c
     buf.h
