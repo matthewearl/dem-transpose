@@ -6,27 +6,42 @@
 #define MAX_PACKET_SIZE     128000
 
 
-static update_t baselines[MAX_ENT];
+static update_t baselines[TP_MAX_ENT];
 
 // `in_last_packet[i]` is true iff entity `i` was in the last packet.
-static qboolean in_last_packet[MAX_ENT];
+static qboolean in_last_packet[TP_MAX_ENT];
 
 // Updates from the previous packet that contained updates.
-static update_t last_updates[MAX_ENT];
+static update_t last_updates[TP_MAX_ENT];
 
 
 // `in_packet[i]` is tue iff entity `i` is in this packet.
-static qboolean in_packet[MAX_ENT];
+static qboolean in_packet[TP_MAX_ENT];
 
 // Updates from this packet.
-static update_t updates[MAX_ENT];
+static update_t updates[TP_MAX_ENT];
 
 
+#define DIFF_FIELD(f)     out_diff->f = (update2->f - update1->f)
 // diff two updates
 static void
 enc_diff_update (update_t *update1, update_t *update2, update_t *out_diff)
 {
-
+    DIFF_FIELD(model_num);
+    DIFF_FIELD(origin1);
+    DIFF_FIELD(origin2);
+    DIFF_FIELD(origin3);
+    DIFF_FIELD(angle1);
+    DIFF_FIELD(angle2);
+    DIFF_FIELD(angle3);
+    DIFF_FIELD(frame);
+    DIFF_FIELD(color_map);
+    DIFF_FIELD(skin);
+    DIFF_FIELD(effects);
+    DIFF_FIELD(alpha);
+    DIFF_FIELD(scale);
+    DIFF_FIELD(lerp_finish);
+    DIFF_FIELD(flags);
 }
 
 
@@ -67,12 +82,32 @@ enc_read_cd_string (void)
 
 
 static tp_err_t
-enc_read_uint16 (uint16_t *out)
+enc_read_uint16 (void **buf, void *buf_end, uint16_t *out)
 {
     uint16_t s;
 
-    CHECK_RC(read_in(&s, sizeof(uint16_t)));
+    if (buf + 2 > buf_end) {
+        return TP_ERR_NOT_ENOUGH_INPUT;
+    }
+    memcpy(&s, *buf, 2);
+    *buf += 2;
     *out = le16toh(s);
+
+    return TP_ERR_SUCCESS;
+}
+
+
+static tp_err_t
+enc_read_uint8 (void **buf, void *buf_end, uint16_t *out)
+{
+    uint8_t b;
+
+    if (buf + 1 > buf_end) {
+        return TP_ERR_NOT_ENOUGH_INPUT;
+    }
+    memcpy(&b, *buf, 1);
+    *buf += 2;
+    *out = b
 
     return TP_ERR_SUCCESS;
 }
@@ -82,6 +117,7 @@ static tp_err_t
 enc_parse_update(void *buf, void *buf_end, update_t *baselines, int *out_len,
                  update_t *out_update, int *out_entity_num)
 {
+    void *start_buf = buf;
     uint32_t flags;
     byte more_flags, extend1_flags, extend2_flags;
     unsigned int flags = base_flags;
@@ -90,94 +126,160 @@ enc_parse_update(void *buf, void *buf_end, update_t *baselines, int *out_len,
 
     flags = (*(uint8_t *)buf) & 0x7f;
     if (flags & U_MOREBITS) {
-        CHECK_RC(read_in(&more_flags, 1));
+        CHECK_RC(enc_read_uint8(&buf, buf_end, &more_flags, 1));
         flags |= more_flags << 8;
     }
     if (flags & U_EXTEND1) {
-        CHECK_RC(read_in(&extend1_flags, 1));
+        CHECK_RC(enc_read_uint8(&buf, buf_end, &extend1_flags, 1));
         flags |= extend1_flags << 16;
     }
     if (flags & U_EXTEND2) {
-        CHECK_RC(read_in(&extend2_flags, 1));
+        CHECK_RC(enc_read_uint8(&buf, buf_end, &extend2_flags, 1));
         flags |= extend2_flags << 24;
     }
     update.flags = flags;
 
     if (flags & U_LONGENTITY) {
         uint16_t entity_num_s;
-        CHECK_RC(read_uint16(&entity_num_s));
+        CHECK_RC(enc_read_uint16(&buf, buf_end, &entity_num_s));
         entity_num = entity_num_s;
     } else {
         uint8_t entity_num_b;
-        CHECK_RC(read_in(&entity_num_b, 1));
+        CHECK_RC(enc_read_uint8(&buf, buf_end, &entity_num_b, 1));
         entity_num = entity_num_b;
     }
 
     if (flags & U_MODEL) {
         uint8_t model_num_b;
-        CHECK_RC(read_in(&model_num_b, 1));
+        CHECK_RC(enc_read_uint8(&buf, buf_end, &model_num_b, 1));
         update.model_num = model_num_b;
     }
 
     if (flags & U_FRAME) {
         uint8_t frame_b;
-        CHECK_RC(read_in(&frame_b, 1));
+        CHECK_RC(enc_read_uint8(&buf, buf_end, &frame_b, 1));
         update.frame = frame_b;
     }
     if (flags & U_COLORMAP) {
         uint8_t colormap_b;
-        CHECK_RC(read_in(&colormap_b, 1));
+        CHECK_RC(enc_read_uint8(&buf, buf_end, &colormap_b, 1));
         update.colormap = colormap_b;
     }
     if (flags & U_SKIN) {
         uint8_t skin_b;
-        CHECK_RC(read_in(&skin_b, 1));
+        CHECK_RC(enc_read_uint8(&buf, buf_end, &skin_b, 1));
         update.skin = skin_b;
     }
     if (flags & U_EFFECTS) {
         uint8_t effects_b;
-        CHECK_RC(read_in(&effects_b, 1));
+        CHECK_RC(enc_read_uint8(&buf, buf_end, &effects_b, 1));
         update.effects = effects_b;
     }
     if (flags & U_ORIGIN1) {
         uint16_t coord;
-        CHECK_RC(read_uint16(&coord));
+        CHECK_RC(enc_read_uint16(&buf, buf_end, &coord));
         update.origin1 = entity_num_s;
     }
     if (flags & U_ANGLE1) {
         uint8_t angle_b;
-        CHECK_RC(read_in(&effects_b, 1));
+        CHECK_RC(enc_read_uint8(&buf, buf_end, &effects_b, 1));
         update.angle1 = angle_b;
     }
     if (flags & U_ORIGIN2) {
         uint16_t coord;
-        CHECK_RC(read_uint16(&coord));
+        CHECK_RC(enc_read_uint16(&buf, buf_end, &coord));
         update.origin2 = entity_num_s;
     }
     if (flags & U_ANGLE2) {
         uint8_t angle_b;
-        CHECK_RC(read_in(&effects_b, 1));
+        CHECK_RC(enc_read_uint8(&buf, buf_end, &effects_b, 1));
         update.angle2 = angle_b;
     }
     if (flags & U_ORIGIN3) {
         uint16_t coord;
-        CHECK_RC(read_uint16(&coord));
+        CHECK_RC(enc_read_uint16(&buf, buf_end, &coord));
         update.origin3 = entity_num_s;
     }
     if (flags & U_ANGLE3) {
         uint8_t angle_b;
-        CHECK_RC(read_in(&effects_b, 1));
+        CHECK_RC(enc_read_uint8(&buf, buf_end, &effects_b, 1));
         update.angle3 = angle_b;
     }
-    // TODO: finish this off
+    if (flags & U_ALPHA)
+        uint8_t alpha_b;
+        CHECK_RC(enc_read_uint8(&buf, buf_end, &alpha_b, 1));
+        update.alpha = alpha_b;
+    }
+    if (flags & U_SCALE)
+        uint8_t scale_b;
+        CHECK_RC(enc_read_uint8(&buf, buf_end, &scale_b, 1));
+        update.scale = scale_b;
+    }
+    if (flags & U_FRAME2)
+        uint8_t frame2_b;
+        CHECK_RC(enc_read_uint8(&buf, buf_end, &frame2_b, 1));
+        update.frame |= frame2_b << 8;
+    }
+    if (flags & U_MODEL2)
+        uint8_t model2_b;
+        CHECK_RC(enc_read_uint8(&buf, buf_end, &model2_b, 1));
+        update.model |= model2_b << 8;
+    }
+    if (flags & U_LERPFINISH)
+        uint8_t lerpfinish_b;
+        CHECK_RC(enc_read_uint8(&buf, buf_end, &lerpfinish_b, 1));
+        update.lerpfinish = lerpfinish_b;
+    }
+
+    memcpy(out_update, &update, sizeof(update_t));
+    *out_entity_num = entity_num;
+
+    return TP_ERR_SUCCESS;
 }
 
 
 static tp_err_t
-enc_parse_baseline (void *buf, void *buf_end, int version, int *out_len,
-                    update_t *out_baselines)
+enc_parse_baseline (void *buf, void *buf_end, int version, int *out_len)
 {
-    // TODO: implement this.
+    int i;
+    uint16_t entity_num;
+    uint8_t flags = 0;
+    update_t *update;
+
+    CHECK_RC(enc_read_uint16(&buf, buf_end, &entity_num));
+    if (entity_num >= TP_MAX_ENT) {
+        return TP_ERR_INVALID_ENTITY_NUM;
+    }
+    update = &baselines[entity_num];
+    memset(update, 0, sizeof(update_t));
+
+    if (version == 2) {
+        CHECK_RC(enc_read_uint8(&buf, buf_end, &flags));
+    }
+
+    if (flags & B_LARGEMODEL) {
+        CHECK_RC(enc_read_uint16(&buf, buf_end, &update->model_num));
+    } else {
+        uint8_t model_num_b;
+        CHECK_RC(enc_read_uint8(&buf, buf_end, &model_num_b));
+        update->model_num = model_num_b;
+    }
+
+    CHECK_RC(enc_read_uint8(&buf, buf_end, &update->color_map));
+    CHECK_RC(enc_read_uint8(&buf, buf_end, &update->skin));
+
+    CHECK_RC(enc_read_uint16(&buf, buf_end, &update->origin1));
+    CHECK_RC(enc_read_uint8(&buf, buf_end, &update->angle1));
+    CHECK_RC(enc_read_uint16(&buf, buf_end, &update->origin2));
+    CHECK_RC(enc_read_uint8(&buf, buf_end, &update->angle2));
+    CHECK_RC(enc_read_uint16(&buf, buf_end, &update->origin3));
+    CHECK_RC(enc_read_uint8(&buf, buf_end, &update->angle3));
+
+    if (flags & B_ALPHA) {
+        CHECK_RC(enc_read_uint8(&buf, buf_end, &update->alpha));
+    }
+
+    return TP_ERR_SUCCESS;
 }
 
 
@@ -321,7 +423,7 @@ enc_compress_message(void *buf, void *buf_end, void *out_buf,
             // Baseline messages are parsed and then copied verbatim.
             rc = enc_parse_baseline(buf, buf_end,
                                     cmd == svc_spawnbaseline ? 1 : 2,
-                                    &msg_len, baselines);
+                                    &msg_len);
             if (rc == TP_ERR_SUCCESS) {
                 rc = buf_add_message(buf, msg_len);
                 if (rc == TP_ERR_BUFFER_FULL) {

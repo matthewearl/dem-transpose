@@ -11,6 +11,7 @@
     F(TP_ERR_NOT_ENOUGH_INPUT)     \
     F(TP_ERR_PACKET_TOO_LARGE)     \
     F(TP_ERR_INVALID_MSG_TYPE)     \
+    F(TP_ERR_INVALID_ENTITY_NUM)   \
     F(TP_ERR_BUFFER_FULL)          \
     F(TP_ERR_NOMEM)                \
     F(TP_ERR_USAGE)                \

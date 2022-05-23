@@ -16,6 +16,9 @@
 // Flag for updates that have not yet been populated
 #define TP_U_INVALID                   (1 << 31)
 
+// Maximum value of entity_num in either baseline or updates
+#define TP_MAX_ENT                     32768
+
 // Internal representation of updates, or update deltas.
 typedef struct __attribute__((__packed__)) update_s {
     struct update_s *next;  // link to next update with same entity

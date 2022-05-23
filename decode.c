@@ -2,12 +2,29 @@
 #include "quakedef.h"
 
 
-static update_t updates[MAX_ENT];
+static update_t updates[TP_MAX_ENT];
 
+
+#define APPLY_DELTA_FIELD(f)    out->f = initial_f + delta_f
 
 static void
 dec_apply_delta (update_t *initial, update_t *delta, update_t *out)
 {
+    APPLY_DELTA_FIELD(model_num);
+    APPLY_DELTA_FIELD(origin1);
+    APPLY_DELTA_FIELD(origin2);
+    APPLY_DELTA_FIELD(origin3);
+    APPLY_DELTA_FIELD(angle1);
+    APPLY_DELTA_FIELD(angle2);
+    APPLY_DELTA_FIELD(angle3);
+    APPLY_DELTA_FIELD(frame);
+    APPLY_DELTA_FIELD(color_map);
+    APPLY_DELTA_FIELD(skin);
+    APPLY_DELTA_FIELD(effects);
+    APPLY_DELTA_FIELD(alpha);
+    APPLY_DELTA_FIELD(scale);
+    APPLY_DELTA_FIELD(lerp_finish);
+    APPLY_DELTA_FIELD(flags);
 }
 
 

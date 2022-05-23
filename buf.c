@@ -9,10 +9,10 @@
 #define BUFFER_MAX_SIZE     (5 << 20)
 
 
-static update_t *initial_updates[MAX_ENT] = {};
-static update_t **initial_updates_next[MAX_ENT] = {};
-static update_t *delta_updates[MAX_ENT] = {};
-static update_t **delta_updates_next[MAX_ENT] = {};
+static update_t *initial_updates[TP_MAX_ENT] = {};
+static update_t **initial_updates_next[TP_MAX_ENT] = {};
+static update_t *delta_updates[TP_MAX_ENT] = {};
+static update_t **delta_updates_next[TP_MAX_ENT] = {};
 static void *buf = NULL;
 static void *ptr = NULL;
 static void *buf_end = NULL;
@@ -297,7 +297,7 @@ buf_clear (void)
     memset(initial_updates, 0, sizeof(initial_updates));
     memset(delta_updates, 0, sizeof(initial_updates));
 
-    for (i = 0; i < MAX_ENT; i++) {
+    for (i = 0; i < TP_MAX_ENT; i++) {
         initial_updates_next = &initial_updates[i];
         delta_updates_next = &delta_updates[i];
     }
