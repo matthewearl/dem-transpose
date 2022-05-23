@@ -91,8 +91,8 @@ buf_add_update (update_t *update, int entity_num, bool delta)
     }
 
     *(uint8_t *)ptr = (delta
-                       ? TP_MSG_TYPE_UPDATE_INITIAL
-                       : TP_MSG_TYPE_UPDATE_DELTA);
+                       ? TP_MSG_TYPE_UPDATE_DELTA
+                       : TP_MSG_TYPE_UPDATE_INITIAL);
     entity_num_le = htole16(entity_num);
     memcpy(ptr + 1, &entity_num_le, 2);
     memcpy(ptr + 3, update, sizeof(update_t));
@@ -239,7 +239,7 @@ buf_write_messages (void)
         } else if ((cmd > 0 && cmd < TP_NUM_DEM_COMMANDS)
                     || cmd == TP_MSG_TYPE_PACKET_HEADER) {
             // Otherwise, verbatim dump the entire command.
-            write_out(&cmd, msg_len);
+            write_out(msg, msg_len);
         }
 
         buf_next_message(&it, &msg, &msg_len);
@@ -275,7 +275,7 @@ buf_read_messages (void)
     while (read_ptr < buf_end) {
         buf_get_internal_message_length(read_ptr, buf_end, true, &msg_len);
 
-        cmd = *(uint8_t *)buf;
+        cmd = *(uint8_t *)read_ptr;
 
         if (cmd == TP_MSG_TYPE_UPDATE_DELTA
                 || cmd == TP_MSG_TYPE_UPDATE_INITIAL) {

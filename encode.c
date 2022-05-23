@@ -128,7 +128,7 @@ enc_parse_update(void *buf, void *buf_end, update_t *baselines, int *out_len,
     uint32_t flags;
     uint8_t cmd, more_flags, extend1_flags, extend2_flags;
     int entity_num;
-    update_t update = {};
+    update_t update;
 
     CHECK_RC(enc_read_uint8(&buf, buf_end, &cmd));
     flags = cmd & 0x7f;
@@ -145,7 +145,6 @@ enc_parse_update(void *buf, void *buf_end, update_t *baselines, int *out_len,
         CHECK_RC(enc_read_uint8(&buf, buf_end, &extend2_flags));
         flags |= extend2_flags << 24;
     }
-    update.flags = flags;
 
     if (flags & U_LONGENTITY) {
         uint16_t entity_num_s;
@@ -156,6 +155,8 @@ enc_parse_update(void *buf, void *buf_end, update_t *baselines, int *out_len,
         CHECK_RC(enc_read_uint8(&buf, buf_end, &entity_num_b));
         entity_num = entity_num_b;
     }
+    memcpy(&update, &baselines[entity_num], sizeof(update_t));
+    update.flags = flags;
 
     if (flags & U_MODEL) {
         uint8_t model_num_b;
