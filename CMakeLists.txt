@@ -1,3 +1,5 @@
+project(dem-transpose)
+set(CMAKE_BUILD_TYPE Debug)
 add_executable(dem_transpose
     buf.c
     buf.h
@@ -6,8 +8,8 @@ add_executable(dem_transpose
     encode.h
     main.c
     main.h
+    msglen.c
     msglen.h
-    parse.h
     private.h
     quakedef.h
     tp_private.h

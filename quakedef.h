@@ -28,7 +28,6 @@
 #define U_UNUSED22      (1<<22)
 #define U_EXTEND2       (1<<23)
 
-
 #define svc_bad                 0
 #define svc_nop                 1
 #define svc_disconnect          2
@@ -83,6 +82,47 @@
 #define svc_backtolobby         55
 #define svc_localsound          56
 
+#define B_LARGEMODEL    (1<<0)
+#define B_LARGEFRAME    (1<<1)
+#define B_ALPHA         (1<<2)
 
+#define SND_VOLUME      (1<<0)
+#define SND_ATTENUATION (1<<1)
+#define SND_LARGEENTITY (1<<3)
+#define SND_LARGESOUND  (1<<4)
+
+#define SU_VIEWHEIGHT   (1<<0)
+#define SU_IDEALPITCH   (1<<1)
+#define SU_PUNCH1       (1<<2)
+#define SU_PUNCH2       (1<<3)
+#define SU_PUNCH3       (1<<4)
+#define SU_VELOCITY1    (1<<5)
+#define SU_VELOCITY2    (1<<6)
+#define SU_VELOCITY3    (1<<7)
+#define SU_UNUSED8      (1<<8)
+#define SU_ITEMS        (1<<9)
+#define SU_ONGROUND     (1<<10)
+#define SU_INWATER      (1<<11)
+#define SU_WEAPONFRAME  (1<<12)
+#define SU_ARMOR        (1<<13)
+#define SU_WEAPON       (1<<14)
+#define SU_EXTEND1      (1<<15)
+#define SU_WEAPON2      (1<<16)
+#define SU_ARMOR2       (1<<17)
+#define SU_AMMO2        (1<<18)
+#define SU_SHELLS2      (1<<19)
+#define SU_NAILS2       (1<<20)
+#define SU_ROCKETS2     (1<<21)
+#define SU_CELLS2       (1<<22)
+#define SU_EXTEND2      (1<<23)
+#define SU_WEAPONFRAME2 (1<<24)
+#define SU_WEAPONALPHA  (1<<25)
+#define SU_UNUSED26     (1<<26)
+#define SU_UNUSED27     (1<<27)
+#define SU_UNUSED28     (1<<28)
+#define SU_UNUSED29     (1<<29)
+#define SU_UNUSED30     (1<<30)
+#define SU_EXTEND3      (1<<31)
 
 #endif /* __QUAKEDEF_H */
+

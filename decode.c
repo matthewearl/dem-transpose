@@ -1,3 +1,10 @@
+#include <assert.h>
+#include <endian.h>
+#include <stddef.h>
+#include <string.h>
+
+#include "buf.h"
+#include "main.h"
 #include "transpose.h"
 #include "quakedef.h"
 
@@ -5,7 +12,7 @@
 static update_t updates[TP_MAX_ENT];
 
 
-#define APPLY_DELTA_FIELD(f)    out->f = initial_f + delta_f
+#define APPLY_DELTA_FIELD(f)    out->f = initial->f + delta->f
 
 static void
 dec_apply_delta (update_t *initial, update_t *delta, update_t *out)
@@ -57,10 +64,11 @@ dec_read_cd_string (void)
 static tp_err_t
 dec_read_field (int offs, int size, bool delta)
 {
+    tp_err_t rc;
     buf_update_iter_t it;
     update_t *update;
 
-    buf_iter_updates(&it);
+    buf_iter_updates(&it, delta);
     buf_next_update(&it, &update);
     while (update != NULL) {
         rc = read_in(((uint8_t *)update) + offs, size);
@@ -87,13 +95,14 @@ dec_read_buffer (void)
 
     // Populate the structs.
     if (rc == TP_ERR_SUCCESS) {
-#define READ_FIELD(x, (y))                                  \
-        do {                                                \
-            rc = dec_read_field(offsetof(update_t, x),      \
-                                sizeof(update->x), (y));    \
-            if (rc != TP_ERR_SUCCESS) {                     \
-                return rc;                                  \
-            }                                               \
+#define READ_FIELD(x, y)                                       \
+        do {                                                   \
+            rc = dec_read_field(offsetof(update_t, x),         \
+                                sizeof(((update_t *)NULL)->x), \
+                                (y));                          \
+            if (rc != TP_ERR_SUCCESS) {                        \
+                return rc;                                     \
+            }                                                  \
         } while(0)
 
         // Read in the initial values (first iter) then the deltas
@@ -101,12 +110,12 @@ dec_read_buffer (void)
         for (i = 0; i < 2; i++) {
             delta = (i == 1);
             READ_FIELD(model_num, delta);
-            READ_FIELD(origin0, delta);
             READ_FIELD(origin1, delta);
             READ_FIELD(origin2, delta);
-            READ_FIELD(angle0, delta);
+            READ_FIELD(origin3, delta);
             READ_FIELD(angle1, delta);
             READ_FIELD(angle2, delta);
+            READ_FIELD(angle3, delta);
             READ_FIELD(frame, delta);
             READ_FIELD(color_map, delta);
             READ_FIELD(skin, delta);
@@ -128,7 +137,7 @@ static void
 dec_emit_update (int entity_num)
 {
     uint8_t cmd;
-    update_t *update = updates[entity_num];
+    update_t *update = &updates[entity_num];
     uint32_t flags = update->flags;
 
     cmd = 0x80 | (flags & 0x7f);
@@ -162,10 +171,10 @@ dec_emit_update (int entity_num)
         write_out(&frame_b, 1);
     }
     if (flags & U_COLORMAP) {
-        write_out(&update->colormap, 1);
+        write_out(&update->color_map, 1);
     }
     if (flags & U_SKIN) {
-        write_out(&update->colormap, 1);
+        write_out(&update->color_map, 1);
     }
     if (flags & U_EFFECTS) {
         write_out(&update->effects, 1);
@@ -198,12 +207,12 @@ dec_emit_update (int entity_num)
         write_out(&update->effects, 1);
     }
     if (flags & U_FRAME2) {
-        uint8_t frame2 = (update->frame2 >> 8) & 0xff;
-        write_out(&frame2, 1;
+        uint8_t frame2 = (update->frame >> 8) & 0xff;
+        write_out(&frame2, 1);
     }
     if (flags & U_MODEL2) {
-        uint8_t model2 = (update->model2 >> 8) & 0xff;
-        write_out(&model2, 1;
+        uint8_t model2 = (update->model_num >> 8) & 0xff;
+        write_out(&model2, 1);
     }
     if (flags & U_LERPFINISH) {
         write_out(&update->lerp_finish, 1);
@@ -216,8 +225,9 @@ static void
 dec_write_messages(void)
 {
     void *msg;
+    uint8_t cmd;
     int msg_len;
-    bug_msg_iter_t it;
+    buf_msg_iter_t it;
 
     buf_iter_messages(&it);
     buf_next_message(&it, &msg, &msg_len);
@@ -237,7 +247,7 @@ dec_write_messages(void)
             } else {
                 memcpy(&updates[entity_num], &update, sizeof(update_t));
             }
-            dec_emit_update(&updates[entity_num], entity_num);
+            dec_emit_update(entity_num);
         } else if (cmd > 0 && cmd < TP_NUM_DEM_COMMANDS) {
             // Write the command out verbatim.
             write_out(msg, msg_len);
@@ -245,7 +255,7 @@ dec_write_messages(void)
             // Skip the command but otherwise write the header out verbatim.
             write_out(msg + 1, msg_len - 1);
         } else {
-            return TP_ERR_INVALID_MSG_TYPE;
+            assert(!"invalid message type");    // should be checked on entry
         }
         buf_next_message(&it, &msg, &msg_len);
     }
@@ -255,15 +265,23 @@ dec_write_messages(void)
 tp_err_t
 tp_decode (void)
 {
+    tp_err_t rc;
     uint32_t total_msg_size;
 
     rc = dec_read_cd_string();
-    while (rc == TP_ERR_SUCCESS && len > 0) {
+    while (rc == TP_ERR_SUCCESS) {
         rc = dec_read_buffer();
+        if (buf_is_empty()) {
+            break;
+        }
         if (rc == TP_ERR_SUCCESS) {
             dec_write_messages();
+            buf_clear();
         }
-        buf_clear();
+
+        if (at_end_of_input()) {
+            break;
+        }
     }
 
     return rc;

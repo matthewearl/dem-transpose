@@ -1,10 +1,13 @@
+#include <assert.h>
 #include <stdio.h>
+#include <string.h>
 
+#include "buf.h"
 #include "transpose.h"
 
 
-static FILE *out_file = stdout;
-static FILE *in_file = stdin;
+static FILE *out_file = NULL;
+static FILE *in_file = NULL;
 
 
 tp_err_t
@@ -25,10 +28,20 @@ write_out (void *buf, int len)
 }
 
 
+bool
+at_end_of_input (void)
+{
+    return feof(in_file);
+}
+
+
 int
 main (int argc, char **argv)
 {
     tp_err_t rc;
+
+    in_file = stdin;
+    out_file = stdout;
 
     if (argc != 2) {
         rc = TP_ERR_USAGE;
@@ -44,12 +57,12 @@ main (int argc, char **argv)
         } else if (!strcmp(argv[1], "decode")) {
             rc = tp_decode();
         } else {
-            show_usage = true;
+            rc = TP_ERR_USAGE;
         }
     }
 
     if (rc == TP_ERR_USAGE) {
-        fprintf(stderr, "usage: %s [encode|decode]\n");
+        fprintf(stderr, "usage: %s [encode|decode]\n", argv[0]);
     } else if (rc != TP_ERR_SUCCESS) {
         fprintf(stderr, "failed: %d\n", rc);
     }

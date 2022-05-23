@@ -2,6 +2,9 @@
 #define __TRANSPOSE_BUF_H
 
 
+#include <stdbool.h>
+
+#include "transpose.h"
 #include "tp_private.h"
 
 
@@ -77,6 +80,9 @@ void buf_write_messages(void);
 tp_err_t buf_read_messages(void);
 
 // Remove all messages and updates from the buffer.
-void buf_clear(void)
+void buf_clear(void);
+
+// Is the buffer empty?
+bool buf_is_empty(void);
 
 #endif  /* __TRANSPOSE_BUF_H */
