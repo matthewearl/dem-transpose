@@ -90,7 +90,9 @@ buf_add_update (update_t *update, int entity_num, bool delta)
         return TP_ERR_BUFFER_FULL;
     }
 
-    *(uint8_t *)ptr = TP_MSG_TYPE_PACKET_HEADER;
+    *(uint8_t *)ptr = (delta
+                       ? TP_MSG_TYPE_UPDATE_INITIAL
+                       : TP_MSG_TYPE_UPDATE_DELTA);
     entity_num_le = htole16(entity_num);
     memcpy(ptr + 1, &entity_num_le, 2);
     memcpy(ptr + 3, update, sizeof(update_t));
@@ -234,7 +236,7 @@ buf_write_messages (void)
             // Don't write the update_t, just the command and entity num
             assert(msg_len >= 3);
             write_out(msg, 3);
-        } else if ((cmd > 0 && cmd < TP_NUM_DEM_COMMANDS) 
+        } else if ((cmd > 0 && cmd < TP_NUM_DEM_COMMANDS)
                     || cmd == TP_MSG_TYPE_PACKET_HEADER) {
             // Otherwise, verbatim dump the entire command.
             write_out(&cmd, msg_len);

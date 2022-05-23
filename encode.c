@@ -499,9 +499,14 @@ tp_encode (void)
         memset(in_packet, 0, sizeof(updates));
         has_update = false;
         while (rc == TP_ERR_SUCCESS && ptr < packet_end) {
-            assert (!disconnected);
-            rc = enc_compress_message(ptr, packet_end, &ptr,
-                                      &has_update);
+            if (disconnected) {
+                rc = TP_ERR_DISCONNECT_MID_PACKET;
+            }
+
+            if (rc == TP_ERR_SUCCESS) {
+                rc = enc_compress_message(ptr, packet_end, &ptr,
+                                          &has_update);
+            }
 
             if (rc == TP_ERR_SUCCESS && has_update) {
                 memcpy(last_updates, updates, sizeof(last_updates));
