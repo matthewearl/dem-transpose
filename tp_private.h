@@ -20,6 +20,9 @@
 // Maximum value of entity_num in either baseline or updates
 #define TP_MAX_ENT                     32768
 
+// Sanity check on command sizes
+#define TP_MAX_MSG_LEN                128000
+
 // Internal representation of updates, or update deltas.
 typedef struct __attribute__((__packed__)) update_s {
     struct update_s *next;  // link to next update with same entity

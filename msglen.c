@@ -37,7 +37,7 @@ msglen_string2(void *buf, void *buf_end, void **msg_end, int *out_len)
         len ++;
         buf ++;
     }
-    len ++; // null terminator
+    buf ++; // null terminator
 
     if (buf > buf_end) return TP_ERR_NOT_ENOUGH_INPUT;
     *msg_end = buf;
@@ -282,6 +282,12 @@ msglen_get_length(void *buf, void *buf_end, int *out_len)
         }
     }
 
+    if (rc == TP_ERR_SUCCESS) {
+        len = buf - buf_start;
+        if (len > TP_MAX_MSG_LEN) {
+            rc = TP_ERR_MSG_TOO_LONG;
+        }
+    }
     if (rc == TP_ERR_SUCCESS) {
         *out_len = buf - buf_start;
     }

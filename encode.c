@@ -112,7 +112,7 @@ enc_read_uint8 (void **buf, void *buf_end, uint8_t *out)
         return TP_ERR_NOT_ENOUGH_INPUT;
     }
     memcpy(&b, *buf, 1);
-    *buf += 2;
+    *buf += 1;
     *out = b;
 
     return TP_ERR_SUCCESS;
@@ -247,9 +247,12 @@ enc_parse_update(void *buf, void *buf_end, update_t *baselines, int *out_len,
 static tp_err_t
 enc_parse_baseline (void *buf, void *buf_end, int version, int *out_len)
 {
+    void *buf_start = buf;
     uint16_t entity_num;
     uint8_t flags = 0;
     update_t *update;
+
+    buf++;
 
     CHECK_RC(enc_read_uint16(&buf, buf_end, &entity_num));
     if (entity_num >= TP_MAX_ENT) {
@@ -270,6 +273,14 @@ enc_parse_baseline (void *buf, void *buf_end, int version, int *out_len)
         update->model_num = model_num_b;
     }
 
+    if (flags & B_LARGEFRAME) {
+        CHECK_RC(enc_read_uint16(&buf, buf_end, &update->frame));
+    } else {
+        uint8_t frame_b;
+        CHECK_RC(enc_read_uint8(&buf, buf_end, &frame_b));
+        update->frame = frame_b;
+    }
+
     CHECK_RC(enc_read_uint8(&buf, buf_end, &update->color_map));
     CHECK_RC(enc_read_uint8(&buf, buf_end, &update->skin));
 
@@ -283,6 +294,8 @@ enc_parse_baseline (void *buf, void *buf_end, int version, int *out_len)
     if (flags & B_ALPHA) {
         CHECK_RC(enc_read_uint8(&buf, buf_end, &update->alpha));
     }
+
+    *out_len = buf - buf_start;
 
     return TP_ERR_SUCCESS;
 }
@@ -371,7 +384,7 @@ enc_flush(void)
 
 
 static tp_err_t
-enc_compress_message(void *buf, void *buf_end, void *out_buf,
+enc_compress_message(void *buf, void *buf_end, void **out_buf,
                      bool *out_has_update)
 {
     tp_err_t rc = TP_ERR_SUCCESS;
@@ -444,6 +457,7 @@ enc_compress_message(void *buf, void *buf_end, void *out_buf,
 
     if (rc == TP_ERR_SUCCESS) {
         *out_has_update = has_update;
+        *out_buf = buf;
     }
 
     return rc;
@@ -457,7 +471,8 @@ tp_encode (void)
     uint8_t packet_header[16];
     uint8_t packet[ENC_MAX_PACKET_SIZE];
     uint32_t packet_len;
-    uint8_t *ptr;
+    void *ptr;
+    void *packet_end;
     bool has_update;
 
     memset(baselines, 0, sizeof(baselines));
@@ -467,6 +482,7 @@ tp_encode (void)
     while (rc == TP_ERR_SUCCESS) {
         rc = enc_read_packet_header(packet_header, &packet_len, packet);
         if (rc == TP_ERR_SUCCESS) {
+            packet_end = packet + packet_len;
             rc = buf_add_packet_header(packet_header);
         }
 
@@ -474,8 +490,8 @@ tp_encode (void)
         memset(updates, 0, sizeof(updates));
         memset(in_packet, 0, sizeof(updates));
         has_update = false;
-        while (rc == TP_ERR_SUCCESS && ptr < packet + packet_len) {
-            rc = enc_compress_message(ptr, packet + packet_len, &ptr,
+        while (rc == TP_ERR_SUCCESS && ptr < packet_end) {
+            rc = enc_compress_message(ptr, packet_end, &ptr,
                                       &has_update);
 
             if (rc == TP_ERR_SUCCESS && has_update) {

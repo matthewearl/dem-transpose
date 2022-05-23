@@ -31,6 +31,8 @@ buf_init (void)
     }
     buf_end = buf + BUFFER_MAX_SIZE;
 
+    buf_clear();
+
     return TP_ERR_SUCCESS;
 }
 

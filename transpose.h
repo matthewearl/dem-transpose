@@ -16,7 +16,8 @@
     F(TP_ERR_NO_MEM)               \
     F(TP_ERR_USAGE)                \
     F(TP_ERR_BAD_CD_STRING)        \
-    F(TP_ERR_UNSUPPORTED)
+    F(TP_ERR_UNSUPPORTED)          \
+    F(TP_ERR_MSG_TOO_LONG)
 
 #define TP_GENERATE_ENUM(ENUM) ENUM,
 #define TP_GENERATE_STRING(STRING) #STRING,

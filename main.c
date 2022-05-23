@@ -35,6 +35,11 @@ at_end_of_input (void)
 }
 
 
+static const char *tp_err_strings[] = {
+    TP_FOREACH_ERR(TP_GENERATE_STRING)
+};
+
+
 int
 main (int argc, char **argv)
 {
@@ -64,7 +69,7 @@ main (int argc, char **argv)
     if (rc == TP_ERR_USAGE) {
         fprintf(stderr, "usage: %s [encode|decode]\n", argv[0]);
     } else if (rc != TP_ERR_SUCCESS) {
-        fprintf(stderr, "failed: %d\n", rc);
+        fprintf(stderr, "failed: %s\n", tp_err_strings[rc]);
     }
 
     // cleanup
