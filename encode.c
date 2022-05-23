@@ -20,13 +20,14 @@ static bool in_last_packet[TP_MAX_ENT];
 // Updates from the previous packet that contained updates.
 static update_t last_updates[TP_MAX_ENT];
 
-
 // `in_packet[i]` is tue iff entity `i` is in this packet.
 static bool in_packet[TP_MAX_ENT];
 
 // Updates from this packet.
 static update_t updates[TP_MAX_ENT];
 
+// How an svc_disconnect message been parsed?
+static bool disconnected = false;
 
 #define DIFF_FIELD(f)     out_diff->f = (update2->f - update1->f)
 // diff two updates
@@ -125,11 +126,13 @@ enc_parse_update(void *buf, void *buf_end, update_t *baselines, int *out_len,
 {
     void *start_buf = buf;
     uint32_t flags;
-    uint8_t more_flags, extend1_flags, extend2_flags;
+    uint8_t cmd, more_flags, extend1_flags, extend2_flags;
     int entity_num;
     update_t update = {};
 
-    flags = (*(uint8_t *)buf) & 0x7f;
+    CHECK_RC(enc_read_uint8(&buf, buf_end, &cmd));
+    flags = cmd & 0x7f;
+
     if (flags & U_MOREBITS) {
         CHECK_RC(enc_read_uint8(&buf, buf_end, &more_flags));
         flags |= more_flags << 8;
@@ -450,6 +453,10 @@ enc_compress_message(void *buf, void *buf_end, void **out_buf,
                 }
                 buf += msg_len;
             }
+
+            if (rc == TP_ERR_SUCCESS && cmd == svc_disconnect) {
+                disconnected = true;
+            }
         } else {
             return TP_ERR_INVALID_MSG_TYPE;
         }
@@ -475,11 +482,12 @@ tp_encode (void)
     void *packet_end;
     bool has_update;
 
+    disconnected = false;
     memset(baselines, 0, sizeof(baselines));
 
     rc = enc_read_cd_string();
 
-    while (rc == TP_ERR_SUCCESS) {
+    while (rc == TP_ERR_SUCCESS && !disconnected) {
         rc = enc_read_packet_header(packet_header, &packet_len, packet);
         if (rc == TP_ERR_SUCCESS) {
             packet_end = packet + packet_len;
@@ -491,6 +499,7 @@ tp_encode (void)
         memset(in_packet, 0, sizeof(updates));
         has_update = false;
         while (rc == TP_ERR_SUCCESS && ptr < packet_end) {
+            assert (!disconnected);
             rc = enc_compress_message(ptr, packet_end, &ptr,
                                       &has_update);
 
@@ -499,15 +508,13 @@ tp_encode (void)
                 memcpy(in_last_packet, in_packet, sizeof(last_updates));
             }
         }
-
-        if (at_end_of_input()) {
-            break;
-        }
     }
 
     if (rc == TP_ERR_SUCCESS && !buf_is_empty()) {
         enc_flush();
     }
+
+    // TODO:  Print any remaining data verbatim
 
     return rc;
 }

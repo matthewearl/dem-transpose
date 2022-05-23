@@ -107,7 +107,6 @@ msglen_temp_entity (void *buf, void *buf_end, void **msg_end)
 
     if (buf + 1 > buf_end) return TP_ERR_NOT_ENOUGH_INPUT;
     entity_type = *(uint8_t *)buf;
-    buf++;
 
     if (entity_type == 17)
     {
@@ -117,7 +116,7 @@ msglen_temp_entity (void *buf, void *buf_end, void **msg_end)
     if (entity_type > 17) {
         return TP_ERR_UNSUPPORTED;
     }
-    buf += te_size[entity_type];
+    buf += te_size[entity_type] - 1;
 
     if (buf > buf_end) return TP_ERR_NOT_ENOUGH_INPUT;
     *msg_end = buf;

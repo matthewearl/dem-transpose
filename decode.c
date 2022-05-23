@@ -278,9 +278,7 @@ tp_decode (void)
             buf_clear();
         }
 
-        if (at_end_of_input()) {
-            break;
-        }
+        // TODO: break on disconnect
     }
 
     return rc;
