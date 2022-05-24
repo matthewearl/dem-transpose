@@ -174,7 +174,7 @@ dec_emit_update (int entity_num)
         write_out(&update->color_map, 1);
     }
     if (flags & U_SKIN) {
-        write_out(&update->color_map, 1);
+        write_out(&update->skin, 1);
     }
     if (flags & U_EFFECTS) {
         write_out(&update->effects, 1);
@@ -201,7 +201,7 @@ dec_emit_update (int entity_num)
         write_out(&update->angle3, 1);
     }
     if (flags & U_ALPHA) {
-        write_out(&update->effects, 1);
+        write_out(&update->alpha, 1);
     }
     if (flags & U_SCALE) {
         write_out(&update->effects, 1);
