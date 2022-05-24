@@ -493,6 +493,10 @@ tp_encode (void)
         if (rc == TP_ERR_SUCCESS) {
             packet_end = packet + packet_len;
             rc = buf_add_packet_header(packet_header);
+            if (rc == TP_ERR_BUFFER_FULL) {
+                enc_flush();
+                rc = buf_add_packet_header(packet_header);
+            }
         }
 
         ptr = packet;
