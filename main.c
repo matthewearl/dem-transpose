@@ -28,10 +28,10 @@ write_out (void *buf, int len)
 }
 
 
-bool
-at_end_of_input (void)
+long int
+output_pos (void)
 {
-    return feof(in_file);
+    return ftell(out_file);
 }
 
 

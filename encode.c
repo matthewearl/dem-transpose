@@ -1,6 +1,7 @@
 #include <endian.h>
 #include <stddef.h>
 #include <string.h>
+#include <stdio.h>
 
 #include "buf.h"
 #include "main.h"
@@ -358,10 +359,15 @@ enc_flush(void)
     // Write out the messages.
     buf_write_messages();
 
-#define FLUSH_FIELD(x, y)                           \
-    enc_flush_field(offsetof(update_t, x),          \
-                    sizeof(((update_t *)NULL)->x),  \
-                    (y))
+#define FLUSH_FIELD(x, y)                                               \
+    do {                                                                \
+        enc_flush_field(offsetof(update_t, x),                          \
+                        sizeof(((update_t *)NULL)->x),                  \
+                        (y));                                           \
+        fprintf(stderr,                                                 \
+                "{\"field\": \"%s\", \"offs\": %ld, \"delta\": %d},\n", \
+                #x, output_pos(), (y));                                 \
+    } while (false)
 
     // Write out the initial values (first iter) then the deltas (second iter).
     for (i = 0; i < 2; i++) {
