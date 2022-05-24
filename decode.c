@@ -129,7 +129,7 @@ dec_read_buffer (void)
         }
     }
 
-    return TP_ERR_SUCCESS;
+    return rc;
 }
 
 

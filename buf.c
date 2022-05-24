@@ -221,6 +221,7 @@ buf_write_messages (void)
     void *msg;
     int msg_len;
     uint32_t total_msg_size_le;
+    uint32_t written = 0;
 
     total_msg_size_le = htole32(total_message_size);
     write_out(&total_msg_size_le, sizeof(total_msg_size_le));
@@ -236,14 +237,20 @@ buf_write_messages (void)
             // Don't write the update_t, just the command and entity num
             assert(msg_len >= 3);
             write_out(msg, 3);
+            written += 3;
         } else if ((cmd > 0 && cmd < TP_NUM_DEM_COMMANDS)
                     || cmd == TP_MSG_TYPE_PACKET_HEADER) {
             // Otherwise, verbatim dump the entire command.
             write_out(msg, msg_len);
+            written += msg_len;
+        } else {
+            assert(!"invalid message type");
         }
 
         buf_next_message(&it, &msg, &msg_len);
     }
+
+    assert(written == total_message_size);
 }
 
 
@@ -291,18 +298,20 @@ buf_read_messages (void)
             if (rc != TP_ERR_SUCCESS) {
                 return rc;
             }
-        } else {
+        } else if ((cmd > 0 && cmd < TP_NUM_DEM_COMMANDS)
+                    || cmd == TP_MSG_TYPE_PACKET_HEADER) {
             rc = buf_add_message(read_ptr, msg_len);
             if (rc != TP_ERR_SUCCESS) {
                 return rc;
             }
-        }
-
-        if (ptr > read_ptr) {
-            return TP_ERR_BUFFER_FULL;
+        } else {
+            return TP_ERR_INVALID_MSG_TYPE;
         }
 
         read_ptr += msg_len;
+        if (ptr > read_ptr) {
+            return TP_ERR_BUFFER_FULL;
+        }
     }
 
     return TP_ERR_SUCCESS;
