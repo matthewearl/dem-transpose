@@ -30,10 +30,11 @@ static update_t updates[TP_MAX_ENT];
 // How an svc_disconnect message been parsed?
 static bool disconnected = false;
 
-#define DIFF_FIELD(f)     out_diff->f = (update2->f - update1->f)
-// diff two updates
+
+#define DIFF_FIELD(f)     out_diff->f = (a->f - b->f)
+
 static void
-enc_diff_update (update_t *update1, update_t *update2, update_t *out_diff)
+enc_diff_update (update_t *a, update_t *b, update_t *out_diff)
 {
     DIFF_FIELD(model_num);
     DIFF_FIELD(origin1);
@@ -49,6 +50,34 @@ enc_diff_update (update_t *update1, update_t *update2, update_t *out_diff)
     DIFF_FIELD(alpha);
     DIFF_FIELD(scale);
     DIFF_FIELD(lerp_finish);
+    DIFF_FIELD(flags);
+}
+
+
+static void
+enc_diff_client_data (client_data_t *o1, client_data *o2,
+                      client_data_t *out_diff)
+{
+    DIFF_FIELD(view_height);
+    DIFF_FIELD(ideal_pitch);
+    DIFF_FIELD(punch1);
+    DIFF_FIELD(punch2);
+    DIFF_FIELD(punch3);
+    DIFF_FIELD(vel1);
+    DIFF_FIELD(vel2);
+    DIFF_FIELD(vel3);
+    DIFF_FIELD(items);
+    DIFF_FIELD(weapon_frame);
+    DIFF_FIELD(armor);
+    DIFF_FIELD(weapon);
+    DIFF_FIELD(health);
+    DIFF_FIELD(ammo);
+    DIFF_FIELD(shells);
+    DIFF_FIELD(nails);
+    DIFF_FIELD(rockets);
+    DIFF_FIELD(cells);
+    DIFF_FIELD(active_weapon);
+    DIFF_FIELD(weapon_alpha);
     DIFF_FIELD(flags);
 }
 
@@ -90,6 +119,22 @@ enc_read_cd_string (void)
 
 
 static tp_err_t
+enc_read_uint32 (void **buf, void *buf_end, uint32_t *out)
+{
+    uint32_t s;
+
+    if (*buf + 4 > buf_end) {
+        return TP_ERR_NOT_ENOUGH_INPUT;
+    }
+    memcpy(&s, *buf, 4);
+    *buf += 4;
+    *out = le32toh(s);
+
+    return TP_ERR_SUCCESS;
+}
+
+
+static tp_err_t
 enc_read_uint16 (void **buf, void *buf_end, uint16_t *out)
 {
     uint16_t s;
@@ -121,6 +166,24 @@ enc_read_uint8 (void **buf, void *buf_end, uint8_t *out)
 }
 
 
+#define TP_READ(field, type, shift)                     \
+    do {                                                \
+        type##_t __t;                                   \
+        CHECK_RC(enc_read_##type(&buf, buf_end, &_t));  \
+        s.field |= __t << shift;                        \
+    } while(false)
+
+
+#define TP_READ_CONDITIONAL(flag, field, type, shift)       \
+    do {                                                    \
+        if (s.flags & (flag)) {                             \
+            type##_t __t;                                   \
+            CHECK_RC(enc_read_##type(&buf, buf_end, &_t));  \
+            s.field |= __t << shift;                        \
+        }                                                   \
+    } while(false)
+
+
 static tp_err_t
 enc_parse_update(void *buf, void *buf_end, update_t *baselines, int *out_len,
                  update_t *out_update, int *out_entity_num)
@@ -129,23 +192,13 @@ enc_parse_update(void *buf, void *buf_end, update_t *baselines, int *out_len,
     uint32_t flags;
     uint8_t cmd, more_flags, extend1_flags, extend2_flags;
     int entity_num;
-    update_t update;
+    update_t s;
 
-    CHECK_RC(enc_read_uint8(&buf, buf_end, &cmd));
-    flags = cmd & 0x7f;
-
-    if (flags & U_MOREBITS) {
-        CHECK_RC(enc_read_uint8(&buf, buf_end, &more_flags));
-        flags |= more_flags << 8;
-    }
-    if (flags & U_EXTEND1) {
-        CHECK_RC(enc_read_uint8(&buf, buf_end, &extend1_flags));
-        flags |= extend1_flags << 16;
-    }
-    if (flags & U_EXTEND2) {
-        CHECK_RC(enc_read_uint8(&buf, buf_end, &extend2_flags));
-        flags |= extend2_flags << 24;
-    }
+    TP_READ(flags, uint8, 0);
+    s.flags &= 0x7f;
+    TP_READ_CONDITIONAL(U_MOREBITS, flags, uint8, 8);
+    TP_READ_CONDITIONAL(U_EXTEND1, flags, uint8, 16);
+    TP_READ_CONDITIONAL(U_EXTEND2, flags, uint8, 24);
 
     if (flags & U_LONGENTITY) {
         uint16_t entity_num_s;
@@ -156,96 +209,82 @@ enc_parse_update(void *buf, void *buf_end, update_t *baselines, int *out_len,
         CHECK_RC(enc_read_uint8(&buf, buf_end, &entity_num_b));
         entity_num = entity_num_b;
     }
-    memcpy(&update, &baselines[entity_num], sizeof(update_t));
-    update.flags = flags;
+    flags = s.flags;
+    memcpy(&s, &baselines[entity_num], sizeof(update_t));
+    s.flags = flags;
 
-    if (flags & U_MODEL) {
-        uint8_t model_num_b;
-        CHECK_RC(enc_read_uint8(&buf, buf_end, &model_num_b));
-        update.model_num = model_num_b;
-    }
+    TP_READ_CONDITIONAL(U_MODEL, model_num, uint8, 0);
+    TP_READ_CONDITIONAL(U_FRAME, frame, uint8, 0);
+    TP_READ_CONDITIONAL(U_COLORMAP, colormap, uint8, 0);
+    TP_READ_CONDITIONAL(U_SKIN, skin, uint8, 0);
+    TP_READ_CONDITIONAL(U_EFFECTS, effects, uint8, 0);
+    TP_READ_CONDITIONAL(U_ORIGIN1, effects, uint16, 0);
+    TP_READ_CONDITIONAL(U_ANGLE1, effects, uint8, 0);
+    TP_READ_CONDITIONAL(U_ORIGIN2, effects, uint16, 0);
+    TP_READ_CONDITIONAL(U_ANGLE2, effects, uint8, 0);
+    TP_READ_CONDITIONAL(U_ORIGIN3, effects, uint16, 0);
+    TP_READ_CONDITIONAL(U_ANGLE3, effects, uint8, 0);
 
-    if (flags & U_FRAME) {
-        uint8_t frame_b;
-        CHECK_RC(enc_read_uint8(&buf, buf_end, &frame_b));
-        update.frame = frame_b;
-    }
-    if (flags & U_COLORMAP) {
-        uint8_t colormap_b;
-        CHECK_RC(enc_read_uint8(&buf, buf_end, &colormap_b));
-        update.color_map = colormap_b;
-    }
-    if (flags & U_SKIN) {
-        uint8_t skin_b;
-        CHECK_RC(enc_read_uint8(&buf, buf_end, &skin_b));
-        update.skin = skin_b;
-    }
-    if (flags & U_EFFECTS) {
-        uint8_t effects_b;
-        CHECK_RC(enc_read_uint8(&buf, buf_end, &effects_b));
-        update.effects = effects_b;
-    }
-    if (flags & U_ORIGIN1) {
-        uint16_t coord;
-        CHECK_RC(enc_read_uint16(&buf, buf_end, &coord));
-        update.origin1 = coord;
-    }
-    if (flags & U_ANGLE1) {
-        uint8_t angle_b;
-        CHECK_RC(enc_read_uint8(&buf, buf_end, &angle_b));
-        update.angle1 = angle_b;
-    }
-    if (flags & U_ORIGIN2) {
-        uint16_t coord;
-        CHECK_RC(enc_read_uint16(&buf, buf_end, &coord));
-        update.origin2 = coord;
-    }
-    if (flags & U_ANGLE2) {
-        uint8_t angle_b;
-        CHECK_RC(enc_read_uint8(&buf, buf_end, &angle_b));
-        update.angle2 = angle_b;
-    }
-    if (flags & U_ORIGIN3) {
-        uint16_t coord;
-        CHECK_RC(enc_read_uint16(&buf, buf_end, &coord));
-        update.origin3 = coord;
-    }
-    if (flags & U_ANGLE3) {
-        uint8_t angle_b;
-        CHECK_RC(enc_read_uint8(&buf, buf_end, &angle_b));
-        update.angle3 = angle_b;
-    }
-    if (flags & U_ALPHA) {
-        uint8_t alpha_b;
-        CHECK_RC(enc_read_uint8(&buf, buf_end, &alpha_b));
-        update.alpha = alpha_b;
-    }
-    if (flags & U_SCALE) {
-        uint8_t scale_b;
-        CHECK_RC(enc_read_uint8(&buf, buf_end, &scale_b));
-        update.scale = scale_b;
-    }
-    if (flags & U_FRAME2) {
-        uint8_t frame2_b;
-        CHECK_RC(enc_read_uint8(&buf, buf_end, &frame2_b));
-        update.frame |= frame2_b << 8;
-    }
-    if (flags & U_MODEL2) {
-        uint8_t model2_b;
-        CHECK_RC(enc_read_uint8(&buf, buf_end, &model2_b));
-        update.model_num |= model2_b << 8;
-    }
-    if (flags & U_LERPFINISH) {
-        uint8_t lerpfinish_b;
-        CHECK_RC(enc_read_uint8(&buf, buf_end, &lerpfinish_b));
-        update.lerp_finish = lerpfinish_b;
-    }
+    TP_READ_CONDITIONAL(U_ALPHA, alpha, uint8, 0);
+    TP_READ_CONDITIONAL(U_SCALE, scale, uint8, 0);
+    TP_READ_CONDITIONAL(U_FRAME2, frame, uint8, 8);
+    TP_READ_CONDITIONAL(U_MODEL2, model_num, uint8, 8);
+    TP_READ_CONDITIONAL(U_LERPFINISH, lerp_finish, uint8, 0);
 
-    memcpy(out_update, &update, sizeof(update_t));
+    memcpy(out_update, &s, sizeof(update_t));
     *out_entity_num = entity_num;
     *out_len = buf - start_buf;
 
     return TP_ERR_SUCCESS;
+}
+
+
+static tp_err_t
+enc_parse_client_data (void *buf, void *buf_end, int *out_len,
+                       client_data_t *out_client_data)
+{
+    client_data_t client_data;
+
+    memset(client_data, 0, sizeof(client_data_t));
+
+    TP_READ(flags, uint16, 0);
+    TP_READ_CONDITIONAL(SU_EXTEND1, flags, uint8, 16);
+    TP_READ_CONDITIONAL(SU_EXTEND2, flags, uint8, 24);
+
+    TP_READ_CONDITIONAL(SU_VIEWHEIGHT, view_height, uint8, 0);
+    TP_READ_CONDITIONAL(SU_IDEALPITCH, ideal_pitch, uint8, 0);
+    TP_READ_CONDITIONAL(SU_PUNCH1, punch1, uint8, 0);
+    TP_READ_CONDITIONAL(SU_VELOCITY1, velocity1, uint8, 0);
+    TP_READ_CONDITIONAL(SU_PUNCH2, punch2, uint8, 0);
+    TP_READ_CONDITIONAL(SU_VELOCITY2, velocity2, uint8, 0);
+    TP_READ_CONDITIONAL(SU_PUNCH3, punch3, uint8, 0);
+    TP_READ_CONDITIONAL(SU_VELOCITY3, velocity3, uint8, 0);
+
+    TP_READ(items, uint32, 0);
+    TP_READ_CONDITIONAL(SU_WEAPONFRAME, weapon_frame, uint8, 0);
+    TP_READ_CONDITIONAL(SU_ARMOR, armor, uint8, 0);
+    TP_READ_CONDITIONAL(SU_WEAPON, weapon, uint8, 0);
+    TP_READ(health, uint16, 0);
+    TP_READ(ammo, uint8, 0);
+    TP_READ(shells, uint8, 0);
+    TP_READ(nails, uint8, 0);
+    TP_READ(rockets, uint8, 0);
+    TP_READ(cells, uint8, 0);
+    TP_READ(active_weapon, uint8, 0);
+
+    TP_READ_CONDITIONAL(SU_WEAPON2, weapon, uint8, 8);
+    TP_READ_CONDITIONAL(SU_ARMOR2, armor, uint8, 8);
+    TP_READ_CONDITIONAL(SU_AMMO2, ammo, uint8, 8);
+    TP_READ_CONDITIONAL(SU_SHELLS2, shells, uint8, 8);
+    TP_READ_CONDITIONAL(SU_NAILS2, nails, uint8, 8);
+    TP_READ_CONDITIONAL(SU_ROCKETS2, rockets, uint8, 8);
+    TP_READ_CONDITIONAL(SU_CELLS2, cells, uint8, 8);
+    TP_READ_CONDITIONAL(SU_WEAPONALPHA, weapon_alpha, uint8, 0);
+
+    memcpy(out_client_data, &s, sizeof(client_data_t));
+    *out_len = buf - start_buf;
+
+    return TP_ERR_SUCCES;
 }
 
 
@@ -255,51 +294,35 @@ enc_parse_baseline (void *buf, void *buf_end, int version, int *out_len)
     void *buf_start = buf;
     uint16_t entity_num;
     uint8_t flags = 0;
-    update_t *update;
+    update_t s;
 
+    memset(s, 0, sizeof(update_t));
     buf++;
 
     CHECK_RC(enc_read_uint16(&buf, buf_end, &entity_num));
     if (entity_num >= TP_MAX_ENT) {
         return TP_ERR_INVALID_ENTITY_NUM;
     }
-    update = &baselines[entity_num];
-    memset(update, 0, sizeof(update_t));
 
     if (version == 2) {
-        CHECK_RC(enc_read_uint8(&buf, buf_end, &flags));
+        TP_READ(flags, uint8, 0);
     }
 
-    if (flags & B_LARGEMODEL) {
-        CHECK_RC(enc_read_uint16(&buf, buf_end, &update->model_num));
-    } else {
-        uint8_t model_num_b;
-        CHECK_RC(enc_read_uint8(&buf, buf_end, &model_num_b));
-        update->model_num = model_num_b;
-    }
+    TP_READ(model_num, uint8, 0);
+    TP_READ_CONDITIONAL(B_LARGEMODEL, model_num, uint8, 8);
+    TP_READ(frame, uint8, 0);
+    TP_READ_CONDITIONAL(B_LARGEFRAME, frame, uint8, 8);
+    TP_READ(color_map, uint8, 0);
+    TP_READ(skin, uint8, 0);
+    TP_READ(origin1, uint16, 0);
+    TP_READ(angle1, uint8, 0);
+    TP_READ(origin2, uint16, 0);
+    TP_READ(angle2, uint8, 0);
+    TP_READ(origin3, uint16, 0);
+    TP_READ(angle3, uint8, 0);
+    TP_READ_CONDITIONAL(alpha, uint8, 0);
 
-    if (flags & B_LARGEFRAME) {
-        CHECK_RC(enc_read_uint16(&buf, buf_end, &update->frame));
-    } else {
-        uint8_t frame_b;
-        CHECK_RC(enc_read_uint8(&buf, buf_end, &frame_b));
-        update->frame = frame_b;
-    }
-
-    CHECK_RC(enc_read_uint8(&buf, buf_end, &update->color_map));
-    CHECK_RC(enc_read_uint8(&buf, buf_end, &update->skin));
-
-    CHECK_RC(enc_read_uint16(&buf, buf_end, &update->origin1));
-    CHECK_RC(enc_read_uint8(&buf, buf_end, &update->angle1));
-    CHECK_RC(enc_read_uint16(&buf, buf_end, &update->origin2));
-    CHECK_RC(enc_read_uint8(&buf, buf_end, &update->angle2));
-    CHECK_RC(enc_read_uint16(&buf, buf_end, &update->origin3));
-    CHECK_RC(enc_read_uint8(&buf, buf_end, &update->angle3));
-
-    if (flags & B_ALPHA) {
-        CHECK_RC(enc_read_uint8(&buf, buf_end, &update->alpha));
-    }
-
+    memcpy(&baselines[entity_num], s, sizeof(update_t));
     *out_len = buf - buf_start;
 
     return TP_ERR_SUCCESS;
@@ -335,7 +358,7 @@ enc_read_packet_header (uint8_t *out_header, uint32_t *out_packet_len,
 
 
 static void
-enc_flush_field(int offs, int size, bool delta)
+enc_flush_update_field(int offs, int size, bool delta)
 {
     buf_update_iter_t it;
     update_t *update;
@@ -345,6 +368,18 @@ enc_flush_field(int offs, int size, bool delta)
     while (update != NULL) {
         write_out(((uint8_t *)update) + offs, size);
         buf_next_update(&it, &update);
+    }
+}
+
+
+// Generic linked list struct flush func
+static void
+enc_flush_field(void **list, int offs, int size)
+{
+    // TODO: is this right?
+    while (list != NULL) {
+        write_out(list + offs, size);
+        list = *list;
     }
 }
 
@@ -359,11 +394,11 @@ enc_flush(void)
     // Write out the messages.
     buf_write_messages();
 
-#define FLUSH_FIELD(x, y)                                               \
+#define FLUSH_UPDATE_FIELD(x, y)                                        \
     do {                                                                \
-        enc_flush_field(offsetof(update_t, x),                          \
-                        sizeof(((update_t *)NULL)->x),                  \
-                        (y));                                           \
+        enc_flush_update_field(offsetof(update_t, x),                   \
+                               sizeof(((update_t *)NULL)->x),           \
+                               (y));                                    \
         fprintf(stderr,                                                 \
                 "{\"field\": \"%s\", \"offs\": %ld, \"delta\": %d},\n", \
                 #x, output_pos(), (y));                                 \
@@ -372,22 +407,25 @@ enc_flush(void)
     // Write out the initial values (first iter) then the deltas (second iter).
     for (i = 0; i < 2; i++) {
         delta = (i == 1);
-        FLUSH_FIELD(model_num, delta);
-        FLUSH_FIELD(origin1, delta);
-        FLUSH_FIELD(origin2, delta);
-        FLUSH_FIELD(origin3, delta);
-        FLUSH_FIELD(angle1, delta);
-        FLUSH_FIELD(angle2, delta);
-        FLUSH_FIELD(angle3, delta);
-        FLUSH_FIELD(frame, delta);
-        FLUSH_FIELD(color_map, delta);
-        FLUSH_FIELD(skin, delta);
-        FLUSH_FIELD(effects, delta);
-        FLUSH_FIELD(alpha, delta);
-        FLUSH_FIELD(scale, delta);
-        FLUSH_FIELD(lerp_finish, delta);
-        FLUSH_FIELD(flags, delta);
+        FLUSH_UPDATE_FIELD(model_num, delta);
+        FLUSH_UPDATE_FIELD(origin1, delta);
+        FLUSH_UPDATE_FIELD(origin2, delta);
+        FLUSH_UPDATE_FIELD(origin3, delta);
+        FLUSH_UPDATE_FIELD(angle1, delta);
+        FLUSH_UPDATE_FIELD(angle2, delta);
+        FLUSH_UPDATE_FIELD(angle3, delta);
+        FLUSH_UPDATE_FIELD(frame, delta);
+        FLUSH_UPDATE_FIELD(color_map, delta);
+        FLUSH_UPDATE_FIELD(skin, delta);
+        FLUSH_UPDATE_FIELD(effects, delta);
+        FLUSH_UPDATE_FIELD(alpha, delta);
+        FLUSH_UPDATE_FIELD(scale, delta);
+        FLUSH_UPDATE_FIELD(lerp_finish, delta);
+        FLUSH_UPDATE_FIELD(flags, delta);
     }
+
+    // Write out client datas
+    FLUSH_FIELD(
 
     buf_clear();
 }

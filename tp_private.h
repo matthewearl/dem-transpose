@@ -23,6 +23,8 @@
 // Sanity check on command sizes
 #define TP_MAX_MSG_LEN                128000
 
+
+
 // Internal representation of updates, or update deltas.
 typedef struct __attribute__((__packed__)) update_s {
     struct update_s *next;  // link to next update with same entity
@@ -44,5 +46,30 @@ typedef struct __attribute__((__packed__)) update_s {
     uint32_t flags;
 } update_t;
 
+
+typedef struct __attribute__((__packed__)) client_data_s {
+    uint8_t view_height;
+    uint8_t ideal_pitch;
+    uint8_t punch1;
+    uint8_t punch2;
+    uint8_t punch3;
+    uint8_t vel1;
+    uint8_t vel2;
+    uint8_t vel3;
+    uint32_t items;
+    uint16_t weapon_frame;
+    uint16_t armor;
+    uint16_t weapon;
+    uint16_t health;
+    uint16_t ammo;
+    uint16_t shells;
+    uint16_t nails;
+    uint16_t rockets;
+    uint16_t cells;
+    uint8_t active_weapon;
+    uint8_t weapon_alpha;
+
+    uint32_t flags;
+} client_data_t;
 
 #endif  /* __TRANSPOSE_PRIVATE_H */

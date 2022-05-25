@@ -16,6 +16,10 @@ static update_t *initial_updates[TP_MAX_ENT] = {};
 static update_t **initial_updates_next[TP_MAX_ENT] = {};
 static update_t *delta_updates[TP_MAX_ENT] = {};
 static update_t **delta_updates_next[TP_MAX_ENT] = {};
+
+static client_data_t *client_datas = NULL;
+static client_data_t **client_data_next = NULL;
+
 static void *buf = NULL;
 static void *ptr = NULL;
 static void *buf_end = NULL;
@@ -109,6 +113,26 @@ buf_add_update (update_t *update, int entity_num, bool delta)
 
     ptr += 3 + sizeof(update_t);
     total_message_size += 3;
+
+    return TP_ERR_SUCCESS;
+}
+
+
+tp_err_t
+buf_add_client_data (client_data_t *client_data)
+{
+    client_data_t *dest_client_data;
+    if (ptr + 1 + sizeof(client_data_t) > buf_end) {
+        return TP_ERR_BUFFER_FULL;
+    }
+
+    *(uint8_t *)ptr = svc_clientdata;
+    dest_client_data = ptr + 1;
+    memcpy(dest_client_data, client_data, sizeof(client_data_t));
+    ptr += 1 + sizeof(client_data_t);
+    total_message_size += 1;
+
+    client_data_next = &dest_client_data->next;
 
     return TP_ERR_SUCCESS;
 }
@@ -331,6 +355,8 @@ buf_clear (void)
         initial_updates_next[i] = &initial_updates[i];
         delta_updates_next[i] = &delta_updates[i];
     }
+
+    client_data_next = &client_datas;
 
     total_message_size = 0;
 }

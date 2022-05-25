@@ -15,7 +15,7 @@ static update_t updates[TP_MAX_ENT];
 #define APPLY_DELTA_FIELD(f)    out->f = initial->f + delta->f
 
 static void
-dec_apply_delta (update_t *initial, update_t *delta, update_t *out)
+dec_apply_update_delta (update_t *initial, update_t *delta, update_t *out)
 {
     APPLY_DELTA_FIELD(model_num);
     APPLY_DELTA_FIELD(origin1);
@@ -31,6 +31,34 @@ dec_apply_delta (update_t *initial, update_t *delta, update_t *out)
     APPLY_DELTA_FIELD(alpha);
     APPLY_DELTA_FIELD(scale);
     APPLY_DELTA_FIELD(lerp_finish);
+    APPLY_DELTA_FIELD(flags);
+}
+
+
+static void
+dec_apply_client_data_delta (client_data *initial, client_data *delta,
+                             client_data *out)
+{
+    APPLY_DELTA_FIELD(view_height);
+    APPLY_DELTA_FIELD(ideal_pitch);
+    APPLY_DELTA_FIELD(punch1);
+    APPLY_DELTA_FIELD(punch2);
+    APPLY_DELTA_FIELD(punch3);
+    APPLY_DELTA_FIELD(vel1);
+    APPLY_DELTA_FIELD(vel2);
+    APPLY_DELTA_FIELD(vel3);
+    APPLY_DELTA_FIELD(items);
+    APPLY_DELTA_FIELD(weapon_frame);
+    APPLY_DELTA_FIELD(armor);
+    APPLY_DELTA_FIELD(weapon);
+    APPLY_DELTA_FIELD(health);
+    APPLY_DELTA_FIELD(ammo);
+    APPLY_DELTA_FIELD(shells);
+    APPLY_DELTA_FIELD(nails);
+    APPLY_DELTA_FIELD(rockets);
+    APPLY_DELTA_FIELD(cells);
+    APPLY_DELTA_FIELD(active_weapon);
+    APPLY_DELTA_FIELD(weapon_alpha);
     APPLY_DELTA_FIELD(flags);
 }
 
@@ -242,8 +270,8 @@ dec_write_messages(void)
             memcpy(&entity_num, msg + 1, sizeof(short));
             entity_num = le16toh(entity_num);
             if (cmd == TP_MSG_TYPE_UPDATE_DELTA) {
-                dec_apply_delta(&updates[entity_num], &update,
-                                &updates[entity_num]);
+                dec_apply_update_delta(&updates[entity_num], &update,
+                                       &updates[entity_num]);
             } else {
                 memcpy(&updates[entity_num], &update, sizeof(update_t));
             }

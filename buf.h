@@ -62,6 +62,9 @@ tp_err_t buf_add_message(void *msg, int msg_len);
 // Add an update message.
 tp_err_t buf_add_update(update_t *update, int entity_num, bool delta);
 
+// Add a client update message.
+tp_err_t buf_add_client_data(client_data_t *client_data);
+
 // Iterate update_t objects in (packet num, entity_num) order
 void buf_iter_updates(buf_update_iter_t *out_iter, bool delta);
 void buf_next_update(buf_update_iter_t *iter, update_t **out_update);
