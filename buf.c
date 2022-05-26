@@ -7,6 +7,7 @@
 #include "buf.h"
 #include "msglen.h"
 #include "main.h"
+#include "quakedef.h"
 
 
 #define BUFFER_MAX_SIZE     (5 << 20)
@@ -272,7 +273,7 @@ buf_write_messages (void)
             assert(msg_len >= 1);
             write_out(msg, 1);
             written += 1;
-        } else if ((cmd > 0 && cmd < TP_NUM_DEM_COMMANDS)k
+        } else if ((cmd > 0 && cmd < TP_NUM_DEM_COMMANDS)
                     || cmd == TP_MSG_TYPE_PACKET_HEADER) {
             // Otherwise, verbatim dump the entire command.
             write_out(msg, msg_len);

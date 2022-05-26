@@ -34,7 +34,7 @@ static update_t updates[TP_MAX_ENT];
 static bool disconnected = false;
 
 
-#define DIFF_FIELD(f)     out_diff->f = (a->f - b->f)
+#define DIFF_FIELD(f)     out_diff->f = (b->f - a->f)
 
 static void
 enc_diff_update (update_t *a, update_t *b, update_t *out_diff)
@@ -58,7 +58,7 @@ enc_diff_update (update_t *a, update_t *b, update_t *out_diff)
 
 
 static void
-enc_diff_client_data (client_data_t *o1, client_data *o2,
+enc_diff_client_data (client_data_t *b, client_data_t *a,
                       client_data_t *out_diff)
 {
     DIFF_FIELD(view_height);
@@ -169,21 +169,21 @@ enc_read_uint8 (void **buf, void *buf_end, uint8_t *out)
 }
 
 
-#define TP_READ(field, type, shift)                     \
-    do {                                                \
-        type##_t __t;                                   \
-        CHECK_RC(enc_read_##type(&buf, buf_end, &_t));  \
-        s.field |= __t << shift;                        \
+#define TP_READ(field, type, shift)                      \
+    do {                                                 \
+        type##_t __t;                                    \
+        CHECK_RC(enc_read_##type(&buf, buf_end, &__t));  \
+        s.field |= __t << shift;                         \
     } while(false)
 
 
-#define TP_READ_CONDITIONAL(flag, field, type, shift)       \
-    do {                                                    \
-        if (s.flags & (flag)) {                             \
-            type##_t __t;                                   \
-            CHECK_RC(enc_read_##type(&buf, buf_end, &_t));  \
-            s.field |= __t << shift;                        \
-        }                                                   \
+#define TP_READ_CONDITIONAL(flag, field, type, shift)        \
+    do {                                                     \
+        if (s.flags & (flag)) {                              \
+            type##_t __t;                                    \
+            CHECK_RC(enc_read_##type(&buf, buf_end, &__t));  \
+            s.field |= __t << shift;                         \
+        }                                                    \
     } while(false)
 
 
@@ -193,7 +193,6 @@ enc_parse_update(void *buf, void *buf_end, update_t *baselines, int *out_len,
 {
     void *start_buf = buf;
     uint32_t flags;
-    uint8_t cmd, more_flags, extend1_flags, extend2_flags;
     int entity_num;
     update_t s;
 
@@ -203,7 +202,7 @@ enc_parse_update(void *buf, void *buf_end, update_t *baselines, int *out_len,
     TP_READ_CONDITIONAL(U_EXTEND1, flags, uint8, 16);
     TP_READ_CONDITIONAL(U_EXTEND2, flags, uint8, 24);
 
-    if (flags & U_LONGENTITY) {
+    if (s.flags & U_LONGENTITY) {
         uint16_t entity_num_s;
         CHECK_RC(enc_read_uint16(&buf, buf_end, &entity_num_s));
         entity_num = entity_num_s;
@@ -218,7 +217,7 @@ enc_parse_update(void *buf, void *buf_end, update_t *baselines, int *out_len,
 
     TP_READ_CONDITIONAL(U_MODEL, model_num, uint8, 0);
     TP_READ_CONDITIONAL(U_FRAME, frame, uint8, 0);
-    TP_READ_CONDITIONAL(U_COLORMAP, colormap, uint8, 0);
+    TP_READ_CONDITIONAL(U_COLORMAP, color_map, uint8, 0);
     TP_READ_CONDITIONAL(U_SKIN, skin, uint8, 0);
     TP_READ_CONDITIONAL(U_EFFECTS, effects, uint8, 0);
     TP_READ_CONDITIONAL(U_ORIGIN1, origin1, uint16, 0);
@@ -246,22 +245,23 @@ static tp_err_t
 enc_parse_client_data (void *buf, void *buf_end, int *out_len,
                        client_data_t *out_client_data)
 {
+    void *start_buf = buf;
     client_data_t s;
 
-    memset(s, 0, sizeof(client_data_t));
+    memset(&s, 0, sizeof(client_data_t));
 
-    TP_READ(s.flags, uint16, 0);
-    TP_READ_CONDITIONAL(SU_EXTEND1, s.flags, uint8, 16);
-    TP_READ_CONDITIONAL(SU_EXTEND2, s.flags, uint8, 24);
+    TP_READ(flags, uint16, 0);
+    TP_READ_CONDITIONAL(SU_EXTEND1, flags, uint8, 16);
+    TP_READ_CONDITIONAL(SU_EXTEND2, flags, uint8, 24);
 
     TP_READ_CONDITIONAL(SU_VIEWHEIGHT, view_height, uint8, 0);
     TP_READ_CONDITIONAL(SU_IDEALPITCH, ideal_pitch, uint8, 0);
     TP_READ_CONDITIONAL(SU_PUNCH1, punch1, uint8, 0);
-    TP_READ_CONDITIONAL(SU_VELOCITY1, velocity1, uint8, 0);
+    TP_READ_CONDITIONAL(SU_VELOCITY1, vel1, uint8, 0);
     TP_READ_CONDITIONAL(SU_PUNCH2, punch2, uint8, 0);
-    TP_READ_CONDITIONAL(SU_VELOCITY2, velocity2, uint8, 0);
+    TP_READ_CONDITIONAL(SU_VELOCITY2, vel2, uint8, 0);
     TP_READ_CONDITIONAL(SU_PUNCH3, punch3, uint8, 0);
-    TP_READ_CONDITIONAL(SU_VELOCITY3, velocity3, uint8, 0);
+    TP_READ_CONDITIONAL(SU_VELOCITY3, vel3, uint8, 0);
 
     TP_READ(items, uint32, 0);
     TP_READ_CONDITIONAL(SU_WEAPONFRAME, weapon_frame, uint8, 0);
@@ -287,7 +287,7 @@ enc_parse_client_data (void *buf, void *buf_end, int *out_len,
     memcpy(out_client_data, &s, sizeof(client_data_t));
     *out_len = buf - start_buf;
 
-    return TP_ERR_SUCCES;
+    return TP_ERR_SUCCESS;
 }
 
 
@@ -296,10 +296,9 @@ enc_parse_baseline (void *buf, void *buf_end, int version, int *out_len)
 {
     void *buf_start = buf;
     uint16_t entity_num;
-    uint8_t flags = 0;
     update_t s;
 
-    memset(s, 0, sizeof(update_t));
+    memset(&s, 0, sizeof(update_t));
     buf++;
 
     CHECK_RC(enc_read_uint16(&buf, buf_end, &entity_num));
@@ -323,9 +322,9 @@ enc_parse_baseline (void *buf, void *buf_end, int version, int *out_len)
     TP_READ(angle2, uint8, 0);
     TP_READ(origin3, uint16, 0);
     TP_READ(angle3, uint8, 0);
-    TP_READ_CONDITIONAL(alpha, uint8, 0);
+    TP_READ_CONDITIONAL(B_ALPHA, alpha, uint8, 0);
 
-    memcpy(&baselines[entity_num], s, sizeof(update_t));
+    memcpy(&baselines[entity_num], &s, sizeof(update_t));
     *out_len = buf - buf_start;
 
     return TP_ERR_SUCCESS;
@@ -402,7 +401,7 @@ enc_flush(void)
     fprintf(stderr,                                                 \
             "{\"field\": \"%s\", \"offs\": %ld, \"delta\": %d, "    \
             "\"type\": \"%s\"},\n",                                 \
-            #x, output_pos(), (delta), #type)                       \
+            #field, output_pos(), (delta), #type)                   \
 
     // Write out updates (initial values first, then deltas).
     //
@@ -436,10 +435,10 @@ enc_flush(void)
     // Write out client datas.
 #define FLUSH_CLIENT_DATA_FIELD(field)                            \
     do {                                                          \
-        enc_flush_field(client_datas,                             \
+        enc_flush_field((void **)client_datas,                    \
                         offsetof(client_data_t, field),           \
                         sizeof(((client_data_t *)NULL)->field));  \
-        DUMP_OFFSET_INFO(client_data, field);
+        DUMP_OFFSET_INFO(client_data, field, 1);                  \
     } while (false)
 
     client_datas = buf_get_client_data_list();
@@ -514,17 +513,16 @@ enc_compress_message(void *buf, void *buf_end, void **out_buf,
             if (rc == TP_ERR_SUCCESS) {
                 buf += msg_len;
             }
-        } else if (cmd == svc_clientupdate) {
+        } else if (cmd == svc_clientdata) {
             client_data_t client_data;
-            rc = enc_parse_client_data(buf, buf_end, baselines, &msg_len,
-                                       &client_data)
+            rc = enc_parse_client_data(buf, buf_end, &msg_len, &client_data);
             if (rc == TP_ERR_SUCCESS) {
                 delta = (last_client_data.flags != TP_SU_INVALID);
                 if (delta) {
                     enc_diff_client_data(&last_client_data, &client_data,
                                          &client_data);
                 }
-                memset(&last_client_data, &client_data, sizeof(client_data_t));
+                memcpy(&last_client_data, &client_data, sizeof(client_data_t));
 
                 rc = buf_add_client_data(&client_data);
                 if (rc == TP_ERR_BUFFER_FULL) {

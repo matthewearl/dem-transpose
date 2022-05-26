@@ -51,6 +51,8 @@ typedef struct __attribute__((__packed__)) update_s {
 
 
 typedef struct __attribute__((__packed__)) client_data_s {
+    struct client_data_s *next;
+
     uint8_t view_height;
     uint8_t ideal_pitch;
     uint8_t punch1;

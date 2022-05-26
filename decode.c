@@ -40,8 +40,8 @@ dec_apply_update_delta (update_t *initial, update_t *delta, update_t *out)
 
 
 static void
-dec_apply_client_data_delta (client_data *initial, client_data *delta,
-                             client_data *out)
+dec_apply_client_data_delta (client_data_t *initial, client_data_t *delta,
+                             client_data_t *out)
 {
     APPLY_DELTA_FIELD(view_height);
     APPLY_DELTA_FIELD(ideal_pitch);
@@ -118,6 +118,8 @@ dec_read_update_field (int offs, int size, bool delta)
 static tp_err_t
 dec_read_field(void **list, int offs, int size)
 {
+    tp_err_t rc;
+
     while (list != NULL) {
         rc = read_in(((uint8_t *)list) + offs, size);
         if (rc != TP_ERR_SUCCESS) {
@@ -178,7 +180,8 @@ dec_read_buffer (void)
 
 #define READ_CLIENT_DATA_FIELD(x)                                \
     do {                                                         \
-        rc = dec_read_field(offsetof(client_data_t, x),          \
+        rc = dec_read_field((void **)client_datas,               \
+                            offsetof(client_data_t, x),          \
                             sizeof(((client_data_t *)NULL)->x)); \
         if (rc != TP_ERR_SUCCESS) {                              \
             return rc;                                           \
@@ -211,11 +214,11 @@ dec_read_buffer (void)
 }
 
 
-#define TP_EMIT_FIELD(field, type, shift)                          \
-    do {                                                           \
-        type##_t __t;                                              \
-        t = (s->field >> shift) & ((1 << (sizeof(__t) * 8)) - 1);  \
-        write_out(&t, sizeof(__t));                                \
+#define TP_EMIT_FIELD(field, type, shift)                              \
+    do {                                                               \
+        type##_t __t;                                                  \
+        __t = (s->field >> shift) & ((1LL << (sizeof(__t) * 8)) - 1);  \
+        write_out(&__t, sizeof(__t));                                  \
     } while (false)
 
 
@@ -236,9 +239,9 @@ dec_emit_update (int entity_num)
     cmd = 0x80 | (s->flags & 0x7f);
     write_out(&cmd, 1);
 
-    TP_EMIT_FIELD_CONDITIONAL(U_MOREBITS, s->flags, uint8, 8);
-    TP_EMIT_FIELD_CONDITIONAL(U_EXTEND1, s->flags, uint8, 16);
-    TP_EMIT_FIELD_CONDITIONAL(U_EXTEND2, s->flags, uint8, 24);
+    TP_EMIT_FIELD_CONDITIONAL(U_MOREBITS, flags, uint8, 8);
+    TP_EMIT_FIELD_CONDITIONAL(U_EXTEND1, flags, uint8, 16);
+    TP_EMIT_FIELD_CONDITIONAL(U_EXTEND2, flags, uint8, 24);
 
     if (s->flags & U_LONGENTITY) {
         uint16_t entity_num_s = htole16(entity_num);
@@ -275,18 +278,18 @@ dec_emit_client_data (void)
 {
     client_data_t *s = &last_client_data;
 
-    TP_EMIT_FIELD(s->flags, uint16, 0);
-    TP_EMIT_FIELD_CONDITIONAL(SU_EXTEND1, s->flags, uint8, 16);
-    TP_EMIT_FIELD_CONDITIONAL(SU_EXTEND2, s->flags, uint8, 24);
+    TP_EMIT_FIELD(flags, uint16, 0);
+    TP_EMIT_FIELD_CONDITIONAL(SU_EXTEND1, flags, uint8, 16);
+    TP_EMIT_FIELD_CONDITIONAL(SU_EXTEND2, flags, uint8, 24);
 
     TP_EMIT_FIELD_CONDITIONAL(SU_VIEWHEIGHT, view_height, uint8, 0);
     TP_EMIT_FIELD_CONDITIONAL(SU_IDEALPITCH, ideal_pitch, uint8, 0);
     TP_EMIT_FIELD_CONDITIONAL(SU_PUNCH1, punch1, uint8, 0);
-    TP_EMIT_FIELD_CONDITIONAL(SU_VELOCITY1, velocity1, uint8, 0);
+    TP_EMIT_FIELD_CONDITIONAL(SU_VELOCITY1, vel1, uint8, 0);
     TP_EMIT_FIELD_CONDITIONAL(SU_PUNCH2, punch2, uint8, 0);
-    TP_EMIT_FIELD_CONDITIONAL(SU_VELOCITY2, velocity2, uint8, 0);
+    TP_EMIT_FIELD_CONDITIONAL(SU_VELOCITY2, vel2, uint8, 0);
     TP_EMIT_FIELD_CONDITIONAL(SU_PUNCH3, punch3, uint8, 0);
-    TP_EMIT_FIELD_CONDITIONAL(SU_VELOCITY3, velocity3, uint8, 0);
+    TP_EMIT_FIELD_CONDITIONAL(SU_VELOCITY3, vel3, uint8, 0);
 
     TP_EMIT_FIELD(items, uint32, 0);
     TP_EMIT_FIELD_CONDITIONAL(SU_WEAPONFRAME, weapon_frame, uint8, 0);
