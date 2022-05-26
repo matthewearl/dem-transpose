@@ -75,6 +75,9 @@ void buf_next_message(buf_msg_iter_t *iter,
                       void **out_msg, int *out_len);
 
 
+// Get linked list of client data objects.
+client_data_t *buf_get_client_data_list (void);
+
 // Write all messages to file.  (includes size header)
 void buf_write_messages(void);
 

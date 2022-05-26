@@ -196,6 +196,12 @@ buf_get_internal_message_length (void *buf, void *buf_end, bool stub_update,
         } else {
             *out_len = 3 + sizeof(update_t);
         }
+    } else if (cmd == svc_clientdata) {
+        if (stub_update) {
+            *out_len = 1;
+        } else {
+            *out_len = 1 + sizeof(client_data_t);
+        }
     } else if (cmd == TP_MSG_TYPE_PACKET_HEADER) {
         if (buf + 17 > buf_end) {
             return TP_ERR_NOT_ENOUGH_INPUT;
@@ -262,7 +268,11 @@ buf_write_messages (void)
             assert(msg_len >= 3);
             write_out(msg, 3);
             written += 3;
-        } else if ((cmd > 0 && cmd < TP_NUM_DEM_COMMANDS)
+        } else if (cmd == svc_clientdata) {
+            assert(msg_len >= 1);
+            write_out(msg, 1);
+            written += 1;
+        } else if ((cmd > 0 && cmd < TP_NUM_DEM_COMMANDS)k
                     || cmd == TP_MSG_TYPE_PACKET_HEADER) {
             // Otherwise, verbatim dump the entire command.
             write_out(msg, msg_len);
@@ -322,6 +332,13 @@ buf_read_messages (void)
             if (rc != TP_ERR_SUCCESS) {
                 return rc;
             }
+        } else if (cmd == svc_clientdata) {
+            client_data_t client_data = {.flags = TP_SU_INVALID};
+            assert(msg_len == 1);
+            rc = buf_add_client_data(&client_data);
+            if (rc != TP_ERR_SUCCESS) {
+                return rc;
+            }
         } else if ((cmd > 0 && cmd < TP_NUM_DEM_COMMANDS)
                     || cmd == TP_MSG_TYPE_PACKET_HEADER) {
             rc = buf_add_message(read_ptr, msg_len);
@@ -340,6 +357,14 @@ buf_read_messages (void)
 
     return TP_ERR_SUCCESS;
 }
+
+
+client_data_t *
+buf_get_client_data_list (void)
+{
+    return client_datas;
+}
+
 
 
 void

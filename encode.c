@@ -21,6 +21,9 @@ static bool in_last_packet[TP_MAX_ENT];
 // Updates from the previous packet that contained updates.
 static update_t last_updates[TP_MAX_ENT];
 
+// Last client_data received
+static client_data_t last_client_data = {.flags = TP_SU_INVALID};
+
 // `in_packet[i]` is tue iff entity `i` is in this packet.
 static bool in_packet[TP_MAX_ENT];
 
@@ -218,12 +221,12 @@ enc_parse_update(void *buf, void *buf_end, update_t *baselines, int *out_len,
     TP_READ_CONDITIONAL(U_COLORMAP, colormap, uint8, 0);
     TP_READ_CONDITIONAL(U_SKIN, skin, uint8, 0);
     TP_READ_CONDITIONAL(U_EFFECTS, effects, uint8, 0);
-    TP_READ_CONDITIONAL(U_ORIGIN1, effects, uint16, 0);
-    TP_READ_CONDITIONAL(U_ANGLE1, effects, uint8, 0);
-    TP_READ_CONDITIONAL(U_ORIGIN2, effects, uint16, 0);
-    TP_READ_CONDITIONAL(U_ANGLE2, effects, uint8, 0);
-    TP_READ_CONDITIONAL(U_ORIGIN3, effects, uint16, 0);
-    TP_READ_CONDITIONAL(U_ANGLE3, effects, uint8, 0);
+    TP_READ_CONDITIONAL(U_ORIGIN1, origin1, uint16, 0);
+    TP_READ_CONDITIONAL(U_ANGLE1, angle1, uint8, 0);
+    TP_READ_CONDITIONAL(U_ORIGIN2, origin2, uint16, 0);
+    TP_READ_CONDITIONAL(U_ANGLE2, angle2, uint8, 0);
+    TP_READ_CONDITIONAL(U_ORIGIN3, origin3, uint16, 0);
+    TP_READ_CONDITIONAL(U_ANGLE3, angle3, uint8, 0);
 
     TP_READ_CONDITIONAL(U_ALPHA, alpha, uint8, 0);
     TP_READ_CONDITIONAL(U_SCALE, scale, uint8, 0);
@@ -243,13 +246,13 @@ static tp_err_t
 enc_parse_client_data (void *buf, void *buf_end, int *out_len,
                        client_data_t *out_client_data)
 {
-    client_data_t client_data;
+    client_data_t s;
 
-    memset(client_data, 0, sizeof(client_data_t));
+    memset(s, 0, sizeof(client_data_t));
 
-    TP_READ(flags, uint16, 0);
-    TP_READ_CONDITIONAL(SU_EXTEND1, flags, uint8, 16);
-    TP_READ_CONDITIONAL(SU_EXTEND2, flags, uint8, 24);
+    TP_READ(s.flags, uint16, 0);
+    TP_READ_CONDITIONAL(SU_EXTEND1, s.flags, uint8, 16);
+    TP_READ_CONDITIONAL(SU_EXTEND2, s.flags, uint8, 24);
 
     TP_READ_CONDITIONAL(SU_VIEWHEIGHT, view_height, uint8, 0);
     TP_READ_CONDITIONAL(SU_IDEALPITCH, ideal_pitch, uint8, 0);
@@ -376,7 +379,6 @@ enc_flush_update_field(int offs, int size, bool delta)
 static void
 enc_flush_field(void **list, int offs, int size)
 {
-    // TODO: is this right?
     while (list != NULL) {
         write_out(list + offs, size);
         list = *list;
@@ -390,21 +392,27 @@ enc_flush(void)
 {
     int i;
     bool delta;
+    client_data_t *client_datas;
 
     // Write out the messages.
     buf_write_messages();
 
-#define FLUSH_UPDATE_FIELD(x, y)                                        \
-    do {                                                                \
-        enc_flush_update_field(offsetof(update_t, x),                   \
-                               sizeof(((update_t *)NULL)->x),           \
-                               (y));                                    \
-        fprintf(stderr,                                                 \
-                "{\"field\": \"%s\", \"offs\": %ld, \"delta\": %d},\n", \
-                #x, output_pos(), (y));                                 \
-    } while (false)
 
-    // Write out the initial values (first iter) then the deltas (second iter).
+#define DUMP_OFFSET_INFO(type, field, delta)                        \
+    fprintf(stderr,                                                 \
+            "{\"field\": \"%s\", \"offs\": %ld, \"delta\": %d, "    \
+            "\"type\": \"%s\"},\n",                                 \
+            #x, output_pos(), (delta), #type)                       \
+
+    // Write out updates (initial values first, then deltas).
+    //
+#define FLUSH_UPDATE_FIELD(field, delta)                            \
+    do {                                                            \
+        enc_flush_update_field(offsetof(update_t, field),           \
+                               sizeof(((update_t *)NULL)->field),   \
+                               (delta));                            \
+        DUMP_OFFSET_INFO(update, field, delta);                     \
+    } while (false)
     for (i = 0; i < 2; i++) {
         delta = (i == 1);
         FLUSH_UPDATE_FIELD(model_num, delta);
@@ -423,9 +431,42 @@ enc_flush(void)
         FLUSH_UPDATE_FIELD(lerp_finish, delta);
         FLUSH_UPDATE_FIELD(flags, delta);
     }
+#undef FLUSH_UPDATE_FIELD
 
-    // Write out client datas
-    FLUSH_FIELD(
+    // Write out client datas.
+#define FLUSH_CLIENT_DATA_FIELD(field)                            \
+    do {                                                          \
+        enc_flush_field(client_datas,                             \
+                        offsetof(client_data_t, field),           \
+                        sizeof(((client_data_t *)NULL)->field));  \
+        DUMP_OFFSET_INFO(client_data, field);
+    } while (false)
+
+    client_datas = buf_get_client_data_list();
+    FLUSH_CLIENT_DATA_FIELD(view_height);
+    FLUSH_CLIENT_DATA_FIELD(ideal_pitch);
+    FLUSH_CLIENT_DATA_FIELD(punch1);
+    FLUSH_CLIENT_DATA_FIELD(punch2);
+    FLUSH_CLIENT_DATA_FIELD(punch3);
+    FLUSH_CLIENT_DATA_FIELD(vel1);
+    FLUSH_CLIENT_DATA_FIELD(vel2);
+    FLUSH_CLIENT_DATA_FIELD(vel3);
+    FLUSH_CLIENT_DATA_FIELD(items);
+    FLUSH_CLIENT_DATA_FIELD(weapon_frame);
+    FLUSH_CLIENT_DATA_FIELD(armor);
+    FLUSH_CLIENT_DATA_FIELD(weapon);
+    FLUSH_CLIENT_DATA_FIELD(health);
+    FLUSH_CLIENT_DATA_FIELD(ammo);
+    FLUSH_CLIENT_DATA_FIELD(shells);
+    FLUSH_CLIENT_DATA_FIELD(nails);
+    FLUSH_CLIENT_DATA_FIELD(rockets);
+    FLUSH_CLIENT_DATA_FIELD(cells);
+    FLUSH_CLIENT_DATA_FIELD(active_weapon);
+    FLUSH_CLIENT_DATA_FIELD(weapon_alpha);
+    FLUSH_CLIENT_DATA_FIELD(flags);
+#undef FLUSH_CLIENT_DATA_FIELD
+
+#undef DUMP_OFFSET_INFO
 
     buf_clear();
 }
@@ -463,8 +504,7 @@ enc_compress_message(void *buf, void *buf_end, void **out_buf,
                     enc_diff_update(&last_updates[entity_num], &update,
                                     &update);
                 }
-            }
-            if (rc == TP_ERR_SUCCESS) {
+
                 rc = buf_add_update(&update, entity_num, delta);
                 if (rc == TP_ERR_BUFFER_FULL) {
                     enc_flush();
@@ -473,6 +513,24 @@ enc_compress_message(void *buf, void *buf_end, void **out_buf,
             }
             if (rc == TP_ERR_SUCCESS) {
                 buf += msg_len;
+            }
+        } else if (cmd == svc_clientupdate) {
+            client_data_t client_data;
+            rc = enc_parse_client_data(buf, buf_end, baselines, &msg_len,
+                                       &client_data)
+            if (rc == TP_ERR_SUCCESS) {
+                delta = (last_client_data.flags != TP_SU_INVALID);
+                if (delta) {
+                    enc_diff_client_data(&last_client_data, &client_data,
+                                         &client_data);
+                }
+                memset(&last_client_data, &client_data, sizeof(client_data_t));
+
+                rc = buf_add_client_data(&client_data);
+                if (rc == TP_ERR_BUFFER_FULL) {
+                    enc_flush();
+                    rc = buf_add_client_data(&client_data);
+                }
             }
         } else if (cmd == svc_spawnbaseline || cmd == svc_spawnbaseline2) {
             // Baseline messages are parsed and then copied verbatim.

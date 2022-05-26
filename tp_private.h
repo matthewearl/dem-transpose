@@ -17,6 +17,9 @@
 // Flag for updates that have not yet been populated
 #define TP_U_INVALID                   (1 << 31)
 
+// Flag for client data that have not yet been populated
+#define TP_SU_INVALID                  (1 << 31)
+
 // Maximum value of entity_num in either baseline or updates
 #define TP_MAX_ENT                     32768
 

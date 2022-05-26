@@ -12,6 +12,10 @@
 static update_t updates[TP_MAX_ENT];
 
 
+// Last client_data parsed
+static client_data_t last_client_data = {.flags = TP_SU_INVALID};
+
+
 #define APPLY_DELTA_FIELD(f)    out->f = initial->f + delta->f
 
 static void
@@ -90,7 +94,7 @@ dec_read_cd_string (void)
 
 
 static tp_err_t
-dec_read_field (int offs, int size, bool delta)
+dec_read_update_field (int offs, int size, bool delta)
 {
     tp_err_t rc;
     buf_update_iter_t it;
@@ -110,141 +114,200 @@ dec_read_field (int offs, int size, bool delta)
 }
 
 
+// Generic linked list struct read func
+static tp_err_t
+dec_read_field(void **list, int offs, int size)
+{
+    while (list != NULL) {
+        rc = read_in(((uint8_t *)list) + offs, size);
+        if (rc != TP_ERR_SUCCESS) {
+            return rc;
+        }
+        list = *list;
+    }
+
+    return TP_ERR_SUCCESS;
+}
+
 static tp_err_t
 dec_read_buffer (void)
 {
     int i;
     bool delta;
     tp_err_t rc;
+    client_data_t *client_datas;
 
     // Read in the messages.  Update structs will exist but won't be
     // populated.
     rc = buf_read_messages();
-
-    // Populate the structs.
-    if (rc == TP_ERR_SUCCESS) {
-#define READ_FIELD(x, y)                                       \
-        do {                                                   \
-            rc = dec_read_field(offsetof(update_t, x),         \
-                                sizeof(((update_t *)NULL)->x), \
-                                (y));                          \
-            if (rc != TP_ERR_SUCCESS) {                        \
-                return rc;                                     \
-            }                                                  \
-        } while(0)
-
-        // Read in the initial values (first iter) then the deltas
-        // (second iter).
-        for (i = 0; i < 2; i++) {
-            delta = (i == 1);
-            READ_FIELD(model_num, delta);
-            READ_FIELD(origin1, delta);
-            READ_FIELD(origin2, delta);
-            READ_FIELD(origin3, delta);
-            READ_FIELD(angle1, delta);
-            READ_FIELD(angle2, delta);
-            READ_FIELD(angle3, delta);
-            READ_FIELD(frame, delta);
-            READ_FIELD(color_map, delta);
-            READ_FIELD(skin, delta);
-            READ_FIELD(effects, delta);
-            READ_FIELD(alpha, delta);
-            READ_FIELD(scale, delta);
-            READ_FIELD(lerp_finish, delta);
-            READ_FIELD(flags, delta);
-
-            // TODO: endian swap?
-        }
+    if (rc != TP_ERR_SUCCESS) {
+        return rc;
     }
+
+    // Read in update objects (initial valuesfirst, then deltas).
+#define READ_UPDATE_FIELD(x, y)                                   \
+    do {                                                          \
+        rc = dec_read_update_field(offsetof(update_t, x),         \
+                                   sizeof(((update_t *)NULL)->x), \
+                                   (y));                          \
+        if (rc != TP_ERR_SUCCESS) {                               \
+            return rc;                                            \
+        }                                                         \
+    } while(0)
+
+    for (i = 0; i < 2; i++) {
+        delta = (i == 1);
+        READ_UPDATE_FIELD(model_num, delta);
+        READ_UPDATE_FIELD(origin1, delta);
+        READ_UPDATE_FIELD(origin2, delta);
+        READ_UPDATE_FIELD(origin3, delta);
+        READ_UPDATE_FIELD(angle1, delta);
+        READ_UPDATE_FIELD(angle2, delta);
+        READ_UPDATE_FIELD(angle3, delta);
+        READ_UPDATE_FIELD(frame, delta);
+        READ_UPDATE_FIELD(color_map, delta);
+        READ_UPDATE_FIELD(skin, delta);
+        READ_UPDATE_FIELD(effects, delta);
+        READ_UPDATE_FIELD(alpha, delta);
+        READ_UPDATE_FIELD(scale, delta);
+        READ_UPDATE_FIELD(lerp_finish, delta);
+        READ_UPDATE_FIELD(flags, delta);
+        // TODO: endian swap?
+    }
+#undef READ_UPDATE_FIELDS
+
+#define READ_CLIENT_DATA_FIELD(x)                                \
+    do {                                                         \
+        rc = dec_read_field(offsetof(client_data_t, x),          \
+                            sizeof(((client_data_t *)NULL)->x)); \
+        if (rc != TP_ERR_SUCCESS) {                              \
+            return rc;                                           \
+        }                                                        \
+    } while(0)
+    client_datas = buf_get_client_data_list();
+    READ_CLIENT_DATA_FIELD(view_height);
+    READ_CLIENT_DATA_FIELD(ideal_pitch);
+    READ_CLIENT_DATA_FIELD(punch1);
+    READ_CLIENT_DATA_FIELD(punch2);
+    READ_CLIENT_DATA_FIELD(punch3);
+    READ_CLIENT_DATA_FIELD(vel1);
+    READ_CLIENT_DATA_FIELD(vel2);
+    READ_CLIENT_DATA_FIELD(vel3);
+    READ_CLIENT_DATA_FIELD(items);
+    READ_CLIENT_DATA_FIELD(weapon_frame);
+    READ_CLIENT_DATA_FIELD(armor);
+    READ_CLIENT_DATA_FIELD(weapon);
+    READ_CLIENT_DATA_FIELD(health);
+    READ_CLIENT_DATA_FIELD(ammo);
+    READ_CLIENT_DATA_FIELD(shells);
+    READ_CLIENT_DATA_FIELD(nails);
+    READ_CLIENT_DATA_FIELD(rockets);
+    READ_CLIENT_DATA_FIELD(cells);
+    READ_CLIENT_DATA_FIELD(active_weapon);
+    READ_CLIENT_DATA_FIELD(weapon_alpha);
+    READ_CLIENT_DATA_FIELD(flags);
 
     return rc;
 }
+
+
+#define TP_EMIT_FIELD(field, type, shift)                          \
+    do {                                                           \
+        type##_t __t;                                              \
+        t = (s->field >> shift) & ((1 << (sizeof(__t) * 8)) - 1);  \
+        write_out(&t, sizeof(__t));                                \
+    } while (false)
+
+
+#define TP_EMIT_FIELD_CONDITIONAL(flag, field, type, shift)  \
+    do {                                                     \
+        if (s->flags & (flag)) {                             \
+            TP_EMIT_FIELD(field, type, shift);               \
+        }                                                    \
+    } while (false)
 
 
 static void
 dec_emit_update (int entity_num)
 {
     uint8_t cmd;
-    update_t *update = &updates[entity_num];
-    uint32_t flags = update->flags;
+    update_t *s = &updates[entity_num];
 
-    cmd = 0x80 | (flags & 0x7f);
+    cmd = 0x80 | (s->flags & 0x7f);
     write_out(&cmd, 1);
 
-    if (flags & U_MOREBITS) {
-        uint8_t more_flags = (flags >> 8) & 0xff;
-        write_out(&more_flags, 1);
-    }
-    if (flags & U_EXTEND1) {
-        uint8_t extend1_flags = (flags >> 16) & 0xff;
-        write_out(&extend1_flags, 1);
-    }
-    if (flags & U_EXTEND2) {
-        uint8_t extend2_flags = (flags >> 16) & 0xff;
-        write_out(&extend2_flags, 1);
-    }
-    if (flags & U_LONGENTITY) {
+    TP_EMIT_FIELD_CONDITIONAL(U_MOREBITS, s->flags, uint8, 8);
+    TP_EMIT_FIELD_CONDITIONAL(U_EXTEND1, s->flags, uint8, 16);
+    TP_EMIT_FIELD_CONDITIONAL(U_EXTEND2, s->flags, uint8, 24);
+
+    if (s->flags & U_LONGENTITY) {
         uint16_t entity_num_s = htole16(entity_num);
         write_out(&entity_num_s, 2);
     } else {
         uint8_t entity_num_b = entity_num & 0xff;
         write_out(&entity_num_b, 1);
     }
-    if (flags & U_MODEL) {
-        uint8_t model_num_b = update->model_num & 0xff;
-        write_out(&model_num_b, 1);
-    }
-    if (flags & U_FRAME) {
-        uint8_t frame_b = update->frame & 0xff;
-        write_out(&frame_b, 1);
-    }
-    if (flags & U_COLORMAP) {
-        write_out(&update->color_map, 1);
-    }
-    if (flags & U_SKIN) {
-        write_out(&update->skin, 1);
-    }
-    if (flags & U_EFFECTS) {
-        write_out(&update->effects, 1);
-    }
-    if (flags & U_ORIGIN1) {
-        uint16_t coord = htole16(update->origin1);
-        write_out(&coord, 2);
-    }
-    if (flags & U_ANGLE1) {
-        write_out(&update->angle1, 1);
-    }
-    if (flags & U_ORIGIN2) {
-        uint16_t coord = htole16(update->origin2);
-        write_out(&coord, 2);
-    }
-    if (flags & U_ANGLE2) {
-        write_out(&update->angle2, 1);
-    }
-    if (flags & U_ORIGIN3) {
-        uint16_t coord = htole16(update->origin3);
-        write_out(&coord, 2);
-    }
-    if (flags & U_ANGLE3) {
-        write_out(&update->angle3, 1);
-    }
-    if (flags & U_ALPHA) {
-        write_out(&update->alpha, 1);
-    }
-    if (flags & U_SCALE) {
-        write_out(&update->effects, 1);
-    }
-    if (flags & U_FRAME2) {
-        uint8_t frame2 = (update->frame >> 8) & 0xff;
-        write_out(&frame2, 1);
-    }
-    if (flags & U_MODEL2) {
-        uint8_t model2 = (update->model_num >> 8) & 0xff;
-        write_out(&model2, 1);
-    }
-    if (flags & U_LERPFINISH) {
-        write_out(&update->lerp_finish, 1);
-    }
+
+    TP_EMIT_FIELD_CONDITIONAL(U_MODEL, model_num, uint8, 0);
+    TP_EMIT_FIELD_CONDITIONAL(U_FRAME, frame, uint8, 0);
+    TP_EMIT_FIELD_CONDITIONAL(U_COLORMAP, color_map, uint8, 0);
+    TP_EMIT_FIELD_CONDITIONAL(U_SKIN, skin, uint8, 0);
+    TP_EMIT_FIELD_CONDITIONAL(U_EFFECTS, effects, uint8, 0);
+
+    TP_EMIT_FIELD_CONDITIONAL(U_ORIGIN1, origin1, uint16, 0);
+    TP_EMIT_FIELD_CONDITIONAL(U_ANGLE1, angle1, uint8, 0);
+    TP_EMIT_FIELD_CONDITIONAL(U_ORIGIN2, origin2, uint16, 0);
+    TP_EMIT_FIELD_CONDITIONAL(U_ANGLE2, angle2, uint8, 0);
+    TP_EMIT_FIELD_CONDITIONAL(U_ORIGIN3, origin3, uint16, 0);
+    TP_EMIT_FIELD_CONDITIONAL(U_ANGLE3, angle3, uint8, 0);
+
+    TP_EMIT_FIELD_CONDITIONAL(U_ALPHA, alpha, uint8, 0);
+    TP_EMIT_FIELD_CONDITIONAL(U_SCALE, scale, uint8, 0);
+
+    TP_EMIT_FIELD_CONDITIONAL(U_FRAME2, frame, uint8, 8);
+    TP_EMIT_FIELD_CONDITIONAL(U_MODEL2, model_num, uint8, 8);
+    TP_EMIT_FIELD_CONDITIONAL(U_LERPFINISH, lerp_finish, uint8, 8);
+}
+
+
+static void
+dec_emit_client_data (void)
+{
+    client_data_t *s = &last_client_data;
+
+    TP_EMIT_FIELD(s->flags, uint16, 0);
+    TP_EMIT_FIELD_CONDITIONAL(SU_EXTEND1, s->flags, uint8, 16);
+    TP_EMIT_FIELD_CONDITIONAL(SU_EXTEND2, s->flags, uint8, 24);
+
+    TP_EMIT_FIELD_CONDITIONAL(SU_VIEWHEIGHT, view_height, uint8, 0);
+    TP_EMIT_FIELD_CONDITIONAL(SU_IDEALPITCH, ideal_pitch, uint8, 0);
+    TP_EMIT_FIELD_CONDITIONAL(SU_PUNCH1, punch1, uint8, 0);
+    TP_EMIT_FIELD_CONDITIONAL(SU_VELOCITY1, velocity1, uint8, 0);
+    TP_EMIT_FIELD_CONDITIONAL(SU_PUNCH2, punch2, uint8, 0);
+    TP_EMIT_FIELD_CONDITIONAL(SU_VELOCITY2, velocity2, uint8, 0);
+    TP_EMIT_FIELD_CONDITIONAL(SU_PUNCH3, punch3, uint8, 0);
+    TP_EMIT_FIELD_CONDITIONAL(SU_VELOCITY3, velocity3, uint8, 0);
+
+    TP_EMIT_FIELD(items, uint32, 0);
+    TP_EMIT_FIELD_CONDITIONAL(SU_WEAPONFRAME, weapon_frame, uint8, 0);
+    TP_EMIT_FIELD_CONDITIONAL(SU_ARMOR, armor, uint8, 0);
+    TP_EMIT_FIELD_CONDITIONAL(SU_WEAPON, weapon, uint8, 0);
+    TP_EMIT_FIELD(health, uint16, 0);
+    TP_EMIT_FIELD(ammo, uint8, 0);
+    TP_EMIT_FIELD(shells, uint8, 0);
+    TP_EMIT_FIELD(nails, uint8, 0);
+    TP_EMIT_FIELD(rockets, uint8, 0);
+    TP_EMIT_FIELD(cells, uint8, 0);
+    TP_EMIT_FIELD(active_weapon, uint8, 0);
+
+    TP_EMIT_FIELD_CONDITIONAL(SU_WEAPON2, weapon, uint8, 8);
+    TP_EMIT_FIELD_CONDITIONAL(SU_ARMOR2, armor, uint8, 8);
+    TP_EMIT_FIELD_CONDITIONAL(SU_AMMO2, ammo, uint8, 8);
+    TP_EMIT_FIELD_CONDITIONAL(SU_SHELLS2, shells, uint8, 8);
+    TP_EMIT_FIELD_CONDITIONAL(SU_NAILS2, nails, uint8, 8);
+    TP_EMIT_FIELD_CONDITIONAL(SU_ROCKETS2, rockets, uint8, 8);
+    TP_EMIT_FIELD_CONDITIONAL(SU_CELLS2, cells, uint8, 8);
+    TP_EMIT_FIELD_CONDITIONAL(SU_WEAPONALPHA, weapon_alpha, uint8, 0);
 }
 
 
@@ -276,6 +339,12 @@ dec_write_messages(void)
                 memcpy(&updates[entity_num], &update, sizeof(update_t));
             }
             dec_emit_update(entity_num);
+        } else if (cmd == svc_clientdata) {
+            client_data_t client_data;
+            memcpy(&client_data, msg + 1, sizeof(client_data_t));
+            dec_apply_client_data_delta(&last_client_data, &client_data,
+                                        &last_client_data);
+            dec_emit_client_data();
         } else if (cmd > 0 && cmd < TP_NUM_DEM_COMMANDS) {
             // Write the command out verbatim.
             write_out(msg, msg_len);
