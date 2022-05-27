@@ -2,6 +2,7 @@
 #include <endian.h>
 #include <stddef.h>
 #include <string.h>
+#include <stdio.h>
 
 #include "buf.h"
 #include "main.h"
@@ -186,6 +187,7 @@ dec_read_buffer (void)
         if (rc != TP_ERR_SUCCESS) {                              \
             return rc;                                           \
         }                                                        \
+        fprintf(stderr, "%s: %ld\n", #x, input_pos());           \
     } while(0)
     client_datas = buf_get_client_data_list();
     READ_CLIENT_DATA_FIELD(view_height);
@@ -209,8 +211,9 @@ dec_read_buffer (void)
     READ_CLIENT_DATA_FIELD(active_weapon);
     READ_CLIENT_DATA_FIELD(weapon_alpha);
     READ_CLIENT_DATA_FIELD(flags);
+#undef READ_CLIENT_DATA_FIELD
 
-    return rc;
+    return TP_ERR_SUCCESS;
 }
 
 
@@ -276,7 +279,11 @@ dec_emit_update (int entity_num)
 static void
 dec_emit_client_data (void)
 {
+    uint8_t cmd = svc_clientdata;
+
     client_data_t *s = &last_client_data;
+
+    write_out(&cmd, 1);
 
     TP_EMIT_FIELD(flags, uint16, 0);
     TP_EMIT_FIELD_CONDITIONAL(SU_EXTEND1, flags, uint8, 16);
@@ -345,8 +352,14 @@ dec_write_messages(void)
         } else if (cmd == svc_clientdata) {
             client_data_t client_data;
             memcpy(&client_data, msg + 1, sizeof(client_data_t));
-            dec_apply_client_data_delta(&last_client_data, &client_data,
-                                        &last_client_data);
+            if (last_client_data.flags != TP_SU_INVALID) {
+                // This is a delta.
+                dec_apply_client_data_delta(&last_client_data, &client_data,
+                                            &last_client_data);
+            } else {
+                // This is the initial value.
+                memcpy(&last_client_data, &client_data, sizeof(client_data_t));
+            }
             dec_emit_client_data();
         } else if (cmd > 0 && cmd < TP_NUM_DEM_COMMANDS) {
             // Write the command out verbatim.

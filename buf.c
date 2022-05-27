@@ -130,9 +130,11 @@ buf_add_client_data (client_data_t *client_data)
     *(uint8_t *)ptr = svc_clientdata;
     dest_client_data = ptr + 1;
     memcpy(dest_client_data, client_data, sizeof(client_data_t));
+    dest_client_data->next = NULL;
     ptr += 1 + sizeof(client_data_t);
     total_message_size += 1;
 
+    *client_data_next = dest_client_data;
     client_data_next = &dest_client_data->next;
 
     return TP_ERR_SUCCESS;
@@ -382,6 +384,7 @@ buf_clear (void)
         delta_updates_next[i] = &delta_updates[i];
     }
 
+    client_datas = NULL;
     client_data_next = &client_datas;
 
     total_message_size = 0;

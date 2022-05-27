@@ -35,6 +35,13 @@ output_pos (void)
 }
 
 
+long int
+input_pos (void)
+{
+    return ftell(in_file);
+}
+
+
 static const char *tp_err_strings[] = {
     TP_FOREACH_ERR(TP_GENERATE_STRING)
 };

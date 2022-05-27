@@ -6,5 +6,6 @@
 tp_err_t read_in (void *buf, int len);
 void write_out (void *buf, int len);
 long int output_pos (void);
+long int input_pos (void);
 
 #endif /* __TRANSPOSE_MAIN_H */

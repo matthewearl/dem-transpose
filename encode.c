@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <endian.h>
 #include <stddef.h>
 #include <string.h>
@@ -58,7 +59,7 @@ enc_diff_update (update_t *a, update_t *b, update_t *out_diff)
 
 
 static void
-enc_diff_client_data (client_data_t *b, client_data_t *a,
+enc_diff_client_data (client_data_t *a, client_data_t *b,
                       client_data_t *out_diff)
 {
     DIFF_FIELD(view_height);
@@ -169,21 +170,32 @@ enc_read_uint8 (void **buf, void *buf_end, uint8_t *out)
 }
 
 
-#define TP_READ(field, type, shift)                      \
-    do {                                                 \
-        type##_t __t;                                    \
-        CHECK_RC(enc_read_##type(&buf, buf_end, &__t));  \
-        s.field |= __t << shift;                         \
+#define TP_READ(field, type, shift)                            \
+    do {                                                       \
+        type##_t __t;                                          \
+        CHECK_RC(enc_read_##type(&buf, buf_end, &__t));        \
+        s.field |= __t << shift;                               \
     } while(false)
 
 
-#define TP_READ_CONDITIONAL(flag, field, type, shift)        \
-    do {                                                     \
-        if (s.flags & (flag)) {                              \
-            type##_t __t;                                    \
-            CHECK_RC(enc_read_##type(&buf, buf_end, &__t));  \
-            s.field |= __t << shift;                         \
-        }                                                    \
+#define TP_READ_CONDITIONAL(flag, field, type, shift)              \
+    do {                                                           \
+        if (s.flags & (flag)) {                                    \
+            type##_t __t;                                          \
+            CHECK_RC(enc_read_##type(&buf, buf_end, &__t));        \
+            if (sizeof(s.field) <= sizeof(__t)) {                  \
+                assert(sizeof(s.field) == sizeof(__t));            \
+                assert(shift == 0);                                \
+                s.field = __t;                                     \
+            } else {                                               \
+                typeof(s.field) __mask = 1;                        \
+                __mask = (__mask << (sizeof(__t) * 8)) - 1;        \
+                __mask = __mask << shift;                          \
+                __mask = ~__mask;                                  \
+                s.field &= __mask;                                 \
+                s.field |= (__t << shift);                         \
+            }                                                      \
+        }                                                          \
     } while(false)
 
 
@@ -194,7 +206,7 @@ enc_parse_update(void *buf, void *buf_end, update_t *baselines, int *out_len,
     void *start_buf = buf;
     uint32_t flags;
     int entity_num;
-    update_t s;
+    update_t s = {.flags = 0};
 
     TP_READ(flags, uint8, 0);
     s.flags &= 0x7f;
@@ -249,6 +261,8 @@ enc_parse_client_data (void *buf, void *buf_end, int *out_len,
     client_data_t s;
 
     memset(&s, 0, sizeof(client_data_t));
+
+    buf++;  // skip command
 
     TP_READ(flags, uint16, 0);
     TP_READ_CONDITIONAL(SU_EXTEND1, flags, uint8, 16);
@@ -379,7 +393,7 @@ static void
 enc_flush_field(void **list, int offs, int size)
 {
     while (list != NULL) {
-        write_out(list + offs, size);
+        write_out(((uint8_t *)list) + offs, size);
         list = *list;
     }
 }
@@ -515,20 +529,28 @@ enc_compress_message(void *buf, void *buf_end, void **out_buf,
             }
         } else if (cmd == svc_clientdata) {
             client_data_t client_data;
+            client_data_t client_data_to_add; // either a delta or absolute
             rc = enc_parse_client_data(buf, buf_end, &msg_len, &client_data);
             if (rc == TP_ERR_SUCCESS) {
-                delta = (last_client_data.flags != TP_SU_INVALID);
-                if (delta) {
+                if (last_client_data.flags != TP_SU_INVALID) {
+                    // Add a delta.
                     enc_diff_client_data(&last_client_data, &client_data,
-                                         &client_data);
+                                         &client_data_to_add);
+                } else {
+                    // Add initial value.
+                    memcpy(&client_data_to_add, &client_data,
+                           sizeof(client_data_t));
                 }
                 memcpy(&last_client_data, &client_data, sizeof(client_data_t));
 
-                rc = buf_add_client_data(&client_data);
+                rc = buf_add_client_data(&client_data_to_add);
                 if (rc == TP_ERR_BUFFER_FULL) {
                     enc_flush();
-                    rc = buf_add_client_data(&client_data);
+                    rc = buf_add_client_data(&client_data_to_add);
                 }
+            }
+            if (rc == TP_ERR_SUCCESS) {
+                buf += msg_len;
             }
         } else if (cmd == svc_spawnbaseline || cmd == svc_spawnbaseline2) {
             // Baseline messages are parsed and then copied verbatim.
