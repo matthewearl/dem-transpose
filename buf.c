@@ -24,6 +24,9 @@ static client_data_t **client_data_next = NULL;
 static timemsg_t *times = NULL;
 static timemsg_t **times_next = NULL;
 
+static packet_header_t *packet_headers = NULL;
+static packet_header_t **packet_headers_next = NULL;
+
 static void *buf = NULL;
 static void *ptr = NULL;
 static void *buf_end = NULL;
@@ -54,22 +57,6 @@ buf_cleanup (void)
     buf = NULL;
     ptr = NULL;
     buf_end = NULL;
-}
-
-
-tp_err_t
-buf_add_packet_header (void *header)
-{
-    if (ptr + 17 > buf_end) {
-        return TP_ERR_BUFFER_FULL;
-    }
-
-    *(uint8_t *)ptr = TP_MSG_TYPE_PACKET_HEADER;
-    memcpy(ptr + 1, header, 16);
-    ptr += 17;
-    total_message_size += 17;
-
-    return TP_ERR_SUCCESS;
 }
 
 
@@ -163,7 +150,28 @@ buf_add_time(timemsg_t *time)
     times_next = &dest->next;
 
     return TP_ERR_SUCCESS;
+}
 
+
+tp_err_t
+buf_add_packet_header(packet_header_t *packet_header)
+{
+    packet_header_t *dest;
+    if (ptr + 1 + sizeof(packet_header_t) > buf_end) {
+        return TP_ERR_BUFFER_FULL;
+    }
+
+    *(uint8_t *)ptr = TP_MSG_TYPE_PACKET_HEADER;
+    dest = ptr + 1;
+    memcpy(dest, packet_header, sizeof(packet_header_t));
+    dest->next = NULL;
+    ptr += 1 + sizeof(packet_header_t);
+    total_message_size += 1;
+
+    *packet_headers_next = dest;
+    packet_headers_next = &dest->next;
+
+    return TP_ERR_SUCCESS;
 }
 
 
@@ -238,10 +246,11 @@ buf_get_internal_message_length (void *buf, void *buf_end, bool stub_update,
             *out_len = 1 + sizeof(timemsg_t);
         }
     } else if (cmd == TP_MSG_TYPE_PACKET_HEADER) {
-        if (buf + 17 > buf_end) {
-            return TP_ERR_NOT_ENOUGH_INPUT;
+        if (stub_update) {
+            *out_len = 1;
+        } else {
+            *out_len = 1 + sizeof(packet_header_t);
         }
-        *out_len = 17;
     } else if (cmd > 0 && cmd < TP_NUM_DEM_COMMANDS) {
         rc = msglen_get_length(buf, buf_end, out_len);
         if (rc != TP_ERR_SUCCESS) {
@@ -303,16 +312,12 @@ buf_write_messages (void)
             assert(msg_len >= 3);
             write_out(msg, 3);
             written += 3;
-        } else if (cmd == svc_clientdata) {
-            assert(msg_len >= 1);
-            write_out(msg, 1);
-            written += 1;
-        } else if (cmd == svc_time) {
-            assert(msg_len >= 1);
-            write_out(msg, 1);
-            written += 1;
-        } else if ((cmd > 0 && cmd < TP_NUM_DEM_COMMANDS)
+        } else if (cmd == svc_clientdata || cmd == svc_time
                     || cmd == TP_MSG_TYPE_PACKET_HEADER) {
+            assert(msg_len >= 1);
+            write_out(msg, 1);
+            written += 1;
+        } else if (cmd > 0 && cmd < TP_NUM_DEM_COMMANDS) {
             // Otherwise, verbatim dump the entire command.
             write_out(msg, msg_len);
             written += msg_len;
@@ -379,14 +384,21 @@ buf_read_messages (void)
                 return rc;
             }
         } else if (cmd == svc_time) {
-            timemsg_t time = {.time = -1};
+            timemsg_t time = {.time = TP_TIME_INVALID};
             assert(msg_len == 1);
             rc = buf_add_time(&time);
             if (rc != TP_ERR_SUCCESS) {
                 return rc;
             }
-        } else if ((cmd > 0 && cmd < TP_NUM_DEM_COMMANDS)
-                    || cmd == TP_MSG_TYPE_PACKET_HEADER) {
+        } else if (cmd == TP_MSG_TYPE_PACKET_HEADER) {
+            packet_header_t packet_header =
+                {.packet_len = TP_PACKET_LEN_INVALID};
+            assert(msg_len == 1);
+            rc = buf_add_packet_header(&packet_header);
+            if (rc != TP_ERR_SUCCESS) {
+                return rc;
+            }
+        } else if (cmd > 0 && cmd < TP_NUM_DEM_COMMANDS) {
             rc = buf_add_message(read_ptr, msg_len);
             if (rc != TP_ERR_SUCCESS) {
                 return rc;
@@ -419,6 +431,13 @@ buf_get_time_list (void)
 }
 
 
+packet_header_t *
+buf_get_packet_header_list (void)
+{
+    return packet_headers;
+}
+
+
 void
 buf_clear (void)
 {
@@ -438,6 +457,9 @@ buf_clear (void)
 
     times = NULL;
     times_next = &times;
+
+    packet_headers = NULL;
+    packet_headers_next = &packet_headers;
 
     total_message_size = 0;
 }

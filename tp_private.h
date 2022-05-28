@@ -23,6 +23,9 @@
 // timemsg_t is this value when no time is yet written.
 #define TP_TIME_INVALID                 0x7fc00000  // nan
 
+// Used on packet_header_t when no packet header has been written yet.
+#define TP_PACKET_LEN_INVALID           0xffffffff
+
 // Maximum value of entity_num in either baseline or updates
 #define TP_MAX_ENT                     32768
 
@@ -86,6 +89,16 @@ typedef struct __attribute__((__packed__)) timemsg_s {
 
     uint32_t time;
 } timemsg_t;
+
+
+typedef struct __attribute__((__packed__)) packet_header_s {
+    struct packet_header_s *next;
+
+    uint32_t packet_len;
+    uint32_t angle1;
+    uint32_t angle2;
+    uint32_t angle3;
+} packet_header_t;
 
 
 #endif  /* __TRANSPOSE_PRIVATE_H */

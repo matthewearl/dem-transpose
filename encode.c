@@ -25,6 +25,8 @@ static update_t last_updates[TP_MAX_ENT];
 // Last client_data received
 static client_data_t last_client_data = {.flags = TP_SU_INVALID};
 static timemsg_t last_time = {.time = TP_TIME_INVALID};
+static packet_header_t last_packet_header =
+    {.packet_len = TP_PACKET_LEN_INVALID};
 
 // `in_packet[i]` is tue iff entity `i` is in this packet.
 static bool in_packet[TP_MAX_ENT];
@@ -91,6 +93,17 @@ static void
 enc_diff_time (timemsg_t *a, timemsg_t *b, timemsg_t *out_diff)
 {
     DIFF_FIELD(time);
+}
+
+
+static void
+enc_diff_packet_header (packet_header_t *a, packet_header_t *b,
+                        packet_header_t *out_diff)
+{
+    DIFF_FIELD(packet_len);
+    DIFF_FIELD(angle1);
+    DIFF_FIELD(angle2);
+    DIFF_FIELD(angle3);
 }
 
 
@@ -362,28 +375,32 @@ enc_parse_baseline (void *buf, void *buf_end, int version, int *out_len)
 
 
 static tp_err_t
-enc_read_packet_header (uint8_t *out_header, uint32_t *out_packet_len,
-                        void *out_packet)
+enc_read_packet_header (packet_header_t *out_header, void *packet)
 {
-    tp_err_t rc;
-    uint32_t packet_len;
+    uint8_t header_bytes[16];
+    void *buf;
+    void *buf_end;
+    packet_header_t s;
 
-    rc = read_in(out_header, 16);
-    if (rc != TP_ERR_SUCCESS) {
-        return rc;
-    }
+    CHECK_RC(read_in(header_bytes, 16));
+    buf = header_bytes;
+    buf_end = header_bytes + sizeof(header_bytes);
 
-    memcpy(&packet_len, out_header, sizeof(packet_len));
-    packet_len = le32toh(packet_len);
-    if (packet_len > ENC_MAX_PACKET_SIZE) {
+    TP_READ(packet_len, uint32, 0);
+    TP_READ(angle1, uint32, 0);
+    TP_READ(angle2, uint32, 0);
+    TP_READ(angle3, uint32, 0);
+    s.next = NULL;
+
+    assert(buf == buf_end);
+
+    if (s.packet_len > ENC_MAX_PACKET_SIZE) {
         return TP_ERR_PACKET_TOO_LARGE;
     }
 
-    rc = read_in(out_packet, packet_len);
-    if (rc != TP_ERR_SUCCESS) {
-        return rc;
-    }
-    *out_packet_len = packet_len;
+    CHECK_RC(read_in(packet, s.packet_len));
+
+    memcpy(out_header, &s, sizeof(packet_header_t));
 
     return TP_ERR_SUCCESS;
 }
@@ -422,6 +439,7 @@ enc_flush(void)
     int i;
     bool delta;
     client_data_t *client_datas;
+    packet_header_t *packet_headers;
 
     // Write out the messages.
     buf_write_messages();
@@ -499,6 +517,12 @@ enc_flush(void)
 
     FLUSH_FIELD(buf_get_time_list(), timemsg_t, time);
 
+    packet_headers = buf_get_packet_header_list();
+    FLUSH_FIELD(packet_headers, packet_header_t, packet_len);
+    FLUSH_FIELD(packet_headers, packet_header_t, angle1);
+    FLUSH_FIELD(packet_headers, packet_header_t, angle2);
+    FLUSH_FIELD(packet_headers, packet_header_t, angle3);
+
 #undef FLUSH_FIELD
 #undef DUMP_OFFSET_INFO
 
@@ -550,7 +574,7 @@ enc_compress_message(void *buf, void *buf_end, void **out_buf,
             }
         } else if (cmd == svc_clientdata) {
             client_data_t client_data;
-            client_data_t client_data_to_add; // either a delta or absolute
+            client_data_t client_data_to_add;  // either a delta or absolute
             rc = enc_parse_client_data(buf, buf_end, &msg_len, &client_data);
             if (rc == TP_ERR_SUCCESS) {
                 if (last_client_data.flags != TP_SU_INVALID) {
@@ -641,9 +665,8 @@ tp_err_t
 tp_encode (void)
 {
     tp_err_t rc;
-    uint8_t packet_header[16];
+    packet_header_t packet_header;
     uint8_t packet[ENC_MAX_PACKET_SIZE];
-    uint32_t packet_len;
     void *ptr;
     void *packet_end;
     bool has_update;
@@ -654,13 +677,28 @@ tp_encode (void)
     rc = enc_read_cd_string();
 
     while (rc == TP_ERR_SUCCESS && !disconnected) {
-        rc = enc_read_packet_header(packet_header, &packet_len, packet);
+        rc = enc_read_packet_header(&packet_header, packet);
         if (rc == TP_ERR_SUCCESS) {
-            packet_end = packet + packet_len;
-            rc = buf_add_packet_header(packet_header);
+            packet_header_t packet_header_to_add;
+
+            packet_end = packet + packet_header.packet_len;
+
+            if (last_packet_header.packet_len != TP_PACKET_LEN_INVALID) {
+                // Add a delta.
+                enc_diff_packet_header(&last_packet_header, &packet_header,
+                                       &packet_header_to_add);
+            } else {
+                // Add initial value.
+                memcpy(&packet_header_to_add, &packet_header,
+                       sizeof(packet_header_t));
+            }
+            memcpy(&last_packet_header, &packet_header,
+                   sizeof(packet_header_t));
+
+            rc = buf_add_packet_header(&packet_header_to_add);
             if (rc == TP_ERR_BUFFER_FULL) {
                 enc_flush();
-                rc = buf_add_packet_header(packet_header);
+                rc = buf_add_packet_header(&packet_header_to_add);
             }
         }
 

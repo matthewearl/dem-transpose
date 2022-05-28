@@ -16,6 +16,8 @@ static update_t updates[TP_MAX_ENT];
 // Last client_data parsed
 static client_data_t last_client_data = {.flags = TP_SU_INVALID};
 static timemsg_t last_time = {.time = TP_TIME_INVALID};
+static packet_header_t last_packet_header =
+    {.packet_len = TP_PACKET_LEN_INVALID};
 
 
 #define APPLY_DELTA_FIELD(f)    out->f = initial->f + delta->f
@@ -73,6 +75,17 @@ static void
 dec_apply_time_delta (timemsg_t *initial, timemsg_t *delta, timemsg_t *out)
 {
     APPLY_DELTA_FIELD(time);
+}
+
+
+static void
+dec_apply_packet_header_delta (packet_header_t *initial, packet_header_t *delta,
+                               packet_header_t *out)
+{
+    APPLY_DELTA_FIELD(packet_len);
+    APPLY_DELTA_FIELD(angle1);
+    APPLY_DELTA_FIELD(angle2);
+    APPLY_DELTA_FIELD(angle3);
 }
 
 
@@ -147,6 +160,7 @@ dec_read_buffer (void)
     bool delta;
     tp_err_t rc;
     client_data_t *client_datas;
+    packet_header_t *packet_headers;
 
     // Read in the messages.  Update structs will exist but won't be
     // populated.
@@ -223,6 +237,12 @@ dec_read_buffer (void)
 #undef READ_CLIENT_DATA_FIELD
 
     READ_FIELD(buf_get_time_list(), timemsg_t, time);
+
+    packet_headers = buf_get_packet_header_list();
+    READ_FIELD(packet_headers, packet_header_t, packet_len);
+    READ_FIELD(packet_headers, packet_header_t, angle1);
+    READ_FIELD(packet_headers, packet_header_t, angle2);
+    READ_FIELD(packet_headers, packet_header_t, angle3);
 
 #undef READ_FIELD
 
@@ -345,6 +365,18 @@ dec_emit_time (void)
 }
 
 
+static void
+dec_emit_packet_header (void)
+{
+    packet_header_t *s = &last_packet_header;
+
+    TP_EMIT_FIELD(packet_len, uint32, 0);
+    TP_EMIT_FIELD(angle1, uint32, 0);
+    TP_EMIT_FIELD(angle2, uint32, 0);
+    TP_EMIT_FIELD(angle3, uint32, 0);
+}
+
+
 // Loop through the messages, apply deltas, and emit demo file.
 static void
 dec_write_messages(void)
@@ -394,12 +426,21 @@ dec_write_messages(void)
                 memcpy(&last_time, &time, sizeof(timemsg_t));
             }
             dec_emit_time();
+        } else if (cmd == TP_MSG_TYPE_PACKET_HEADER) {
+            packet_header_t packet_header;
+            memcpy(&packet_header, msg + 1, sizeof(packet_header_t));
+            if (last_packet_header.packet_len != TP_PACKET_LEN_INVALID) {
+                dec_apply_packet_header_delta(&last_packet_header,
+                                              &packet_header,
+                                              &last_packet_header);
+            } else {
+                memcpy(&last_packet_header, &packet_header,
+                       sizeof(packet_header_t));
+            }
+            dec_emit_packet_header();
         } else if (cmd > 0 && cmd < TP_NUM_DEM_COMMANDS) {
             // Write the command out verbatim.
             write_out(msg, msg_len);
-        } else if (cmd == TP_MSG_TYPE_PACKET_HEADER) {
-            // Skip the command but otherwise write the header out verbatim.
-            write_out(msg + 1, msg_len - 1);
         } else {
             assert(!"invalid message type");    // should be checked on entry
         }

@@ -52,9 +52,6 @@ typedef struct  {
 tp_err_t buf_init(void);
 void buf_cleanup(void);
 
-// Add 16-byte packet header.
-tp_err_t buf_add_packet_header(void *ptr);
-
 // Add a message to the front of the buffer.
 // TODO:  should msg_len be computed internally using msglen module?
 tp_err_t buf_add_message(void *msg, int msg_len);
@@ -65,6 +62,7 @@ tp_err_t buf_add_update(update_t *update, int entity_num, bool delta);
 // Add message of particular types.
 tp_err_t buf_add_client_data(client_data_t *client_data);
 tp_err_t buf_add_time(timemsg_t *time);
+tp_err_t buf_add_packet_header(packet_header_t *packet_header);
 
 // Iterate update_t objects in (packet num, entity_num) order
 void buf_iter_updates(buf_update_iter_t *out_iter, bool delta);
@@ -78,7 +76,8 @@ void buf_next_message(buf_msg_iter_t *iter,
 
 // Get linked list of various objects.
 client_data_t *buf_get_client_data_list (void);
-timemsg_t * buf_get_time_list (void);
+timemsg_t *buf_get_time_list (void);
+packet_header_t *buf_get_packet_header_list (void);
 
 // Write all messages to file.  (includes size header)
 void buf_write_messages(void);
