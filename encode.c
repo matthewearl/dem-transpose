@@ -577,7 +577,7 @@ enc_compress_message(void *buf, void *buf_end, void **out_buf,
             timemsg_t time, time_to_add;
             rc = enc_parse_time(buf, buf_end, &msg_len, &time);
             if (rc == TP_ERR_SUCCESS) {
-                if (last_time.time == TP_TIME_INVALID) {
+                if (last_time.time != TP_TIME_INVALID) {
                     // Add a delta.
                     enc_diff_time(&last_time, &time, &time_to_add);
                 } else {

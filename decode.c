@@ -388,7 +388,7 @@ dec_write_messages(void)
         } else if (cmd == svc_time) {
             timemsg_t time;
             memcpy(&time, msg + 1, sizeof(timemsg_t));
-            if (last_time.time == TP_TIME_INVALID) {
+            if (last_time.time != TP_TIME_INVALID) {
                 dec_apply_time_delta(&last_time, &time, &last_time);
             } else {
                 memcpy(&last_time, &time, sizeof(timemsg_t));
