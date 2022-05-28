@@ -272,7 +272,7 @@ dec_emit_update (int entity_num)
 
     TP_EMIT_FIELD_CONDITIONAL(U_FRAME2, frame, uint8, 8);
     TP_EMIT_FIELD_CONDITIONAL(U_MODEL2, model_num, uint8, 8);
-    TP_EMIT_FIELD_CONDITIONAL(U_LERPFINISH, lerp_finish, uint8, 8);
+    TP_EMIT_FIELD_CONDITIONAL(U_LERPFINISH, lerp_finish, uint8, 0);
 }
 
 
