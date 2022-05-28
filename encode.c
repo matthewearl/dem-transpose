@@ -170,32 +170,23 @@ enc_read_uint8 (void **buf, void *buf_end, uint8_t *out)
 }
 
 
-#define TP_READ(field, type, shift)                            \
-    do {                                                       \
-        type##_t __t;                                          \
-        CHECK_RC(enc_read_##type(&buf, buf_end, &__t));        \
-        s.field |= __t << shift;                               \
+#define TP_READ(field, type, shift)                     \
+    do {                                                \
+        type##_t __t;                                   \
+        uint64_t __mask = 1;                            \
+        CHECK_RC(enc_read_##type(&buf, buf_end, &__t)); \
+        __mask = (__mask << (sizeof(__t) * 8)) - 1;     \
+        __mask = __mask << shift;                       \
+        s.field &= ~(typeof(s.field))__mask;            \
+        s.field |= (__t << shift);                      \
     } while(false)
 
 
-#define TP_READ_CONDITIONAL(flag, field, type, shift)              \
-    do {                                                           \
-        if (s.flags & (flag)) {                                    \
-            type##_t __t;                                          \
-            CHECK_RC(enc_read_##type(&buf, buf_end, &__t));        \
-            if (sizeof(s.field) <= sizeof(__t)) {                  \
-                assert(sizeof(s.field) == sizeof(__t));            \
-                assert(shift == 0);                                \
-                s.field = __t;                                     \
-            } else {                                               \
-                typeof(s.field) __mask = 1;                        \
-                __mask = (__mask << (sizeof(__t) * 8)) - 1;        \
-                __mask = __mask << shift;                          \
-                __mask = ~__mask;                                  \
-                s.field &= __mask;                                 \
-                s.field |= (__t << shift);                         \
-            }                                                      \
-        }                                                          \
+#define TP_READ_CONDITIONAL(flag, field, type, shift) \
+    do {                                              \
+        if (s.flags & (flag)) {                       \
+            TP_READ(field, type, shift);              \
+        }                                             \
     } while(false)
 
 
