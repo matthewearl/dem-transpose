@@ -15,6 +15,7 @@ static update_t updates[TP_MAX_ENT];
 
 // Last client_data parsed
 static client_data_t last_client_data = {.flags = TP_SU_INVALID};
+static timemsg_t last_time = {.time = TP_TIME_INVALID};
 
 
 #define APPLY_DELTA_FIELD(f)    out->f = initial->f + delta->f
@@ -65,6 +66,13 @@ dec_apply_client_data_delta (client_data_t *initial, client_data_t *delta,
     APPLY_DELTA_FIELD(active_weapon);
     APPLY_DELTA_FIELD(weapon_alpha);
     APPLY_DELTA_FIELD(flags);
+}
+
+
+static void
+dec_apply_time_delta (timemsg_t *initial, timemsg_t *delta, timemsg_t *out)
+{
+    APPLY_DELTA_FIELD(time);
 }
 
 
@@ -179,16 +187,17 @@ dec_read_buffer (void)
     }
 #undef READ_UPDATE_FIELDS
 
-#define READ_CLIENT_DATA_FIELD(x)                                \
-    do {                                                         \
-        rc = dec_read_field((void **)client_datas,               \
-                            offsetof(client_data_t, x),          \
-                            sizeof(((client_data_t *)NULL)->x)); \
-        if (rc != TP_ERR_SUCCESS) {                              \
-            return rc;                                           \
-        }                                                        \
-        fprintf(stderr, "%s: %ld\n", #x, input_pos());           \
+#define READ_FIELD(list, type, x)                       \
+    do {                                                \
+        rc = dec_read_field((void **)list,              \
+                            offsetof(type, x),          \
+                            sizeof(((type *)NULL)->x)); \
+        if (rc != TP_ERR_SUCCESS) {                     \
+            return rc;                                  \
+        }                                               \
+        fprintf(stderr, "%s: %ld\n", #x, input_pos());  \
     } while(0)
+#define READ_CLIENT_DATA_FIELD(x) READ_FIELD(client_datas, client_data_t, x)
     client_datas = buf_get_client_data_list();
     READ_CLIENT_DATA_FIELD(view_height);
     READ_CLIENT_DATA_FIELD(ideal_pitch);
@@ -212,6 +221,10 @@ dec_read_buffer (void)
     READ_CLIENT_DATA_FIELD(weapon_alpha);
     READ_CLIENT_DATA_FIELD(flags);
 #undef READ_CLIENT_DATA_FIELD
+
+    READ_FIELD(buf_get_time_list(), timemsg_t, time);
+
+#undef READ_FIELD
 
     return TP_ERR_SUCCESS;
 }
@@ -321,6 +334,17 @@ dec_emit_client_data (void)
 }
 
 
+static void
+dec_emit_time (void)
+{
+    uint8_t cmd = svc_time;
+    timemsg_t *s = &last_time;
+
+    write_out(&cmd, 1);
+    TP_EMIT_FIELD(time, uint32, 0);
+}
+
+
 // Loop through the messages, apply deltas, and emit demo file.
 static void
 dec_write_messages(void)
@@ -361,6 +385,15 @@ dec_write_messages(void)
                 memcpy(&last_client_data, &client_data, sizeof(client_data_t));
             }
             dec_emit_client_data();
+        } else if (cmd == svc_time) {
+            timemsg_t time;
+            memcpy(&time, msg + 1, sizeof(timemsg_t));
+            if (last_time.time == TP_TIME_INVALID) {
+                dec_apply_time_delta(&last_time, &time, &last_time);
+            } else {
+                memcpy(&last_time, &time, sizeof(timemsg_t));
+            }
+            dec_emit_time();
         } else if (cmd > 0 && cmd < TP_NUM_DEM_COMMANDS) {
             // Write the command out verbatim.
             write_out(msg, msg_len);

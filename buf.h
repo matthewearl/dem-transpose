@@ -62,8 +62,9 @@ tp_err_t buf_add_message(void *msg, int msg_len);
 // Add an update message.
 tp_err_t buf_add_update(update_t *update, int entity_num, bool delta);
 
-// Add a client update message.
+// Add message of particular types.
 tp_err_t buf_add_client_data(client_data_t *client_data);
+tp_err_t buf_add_time(timemsg_t *time);
 
 // Iterate update_t objects in (packet num, entity_num) order
 void buf_iter_updates(buf_update_iter_t *out_iter, bool delta);
@@ -75,8 +76,9 @@ void buf_next_message(buf_msg_iter_t *iter,
                       void **out_msg, int *out_len);
 
 
-// Get linked list of client data objects.
+// Get linked list of various objects.
 client_data_t *buf_get_client_data_list (void);
+timemsg_t * buf_get_time_list (void);
 
 // Write all messages to file.  (includes size header)
 void buf_write_messages(void);

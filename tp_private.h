@@ -20,6 +20,9 @@
 // Flag for client data that have not yet been populated
 #define TP_SU_INVALID                  (1 << 31)
 
+// timemsg_t is this value when no time is yet written.
+#define TP_TIME_INVALID                 0x7fc00000  // nan
+
 // Maximum value of entity_num in either baseline or updates
 #define TP_MAX_ENT                     32768
 
@@ -76,5 +79,13 @@ typedef struct __attribute__((__packed__)) client_data_s {
 
     uint32_t flags;
 } client_data_t;
+
+
+typedef struct __attribute__((__packed__)) timemsg_s {
+    struct timemsg_s *next;
+
+    uint32_t time;
+} timemsg_t;
+
 
 #endif  /* __TRANSPOSE_PRIVATE_H */

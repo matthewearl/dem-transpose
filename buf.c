@@ -21,6 +21,9 @@ static update_t **delta_updates_next[TP_MAX_ENT] = {};
 static client_data_t *client_datas = NULL;
 static client_data_t **client_data_next = NULL;
 
+static timemsg_t *times = NULL;
+static timemsg_t **times_next = NULL;
+
 static void *buf = NULL;
 static void *ptr = NULL;
 static void *buf_end = NULL;
@@ -141,6 +144,29 @@ buf_add_client_data (client_data_t *client_data)
 }
 
 
+tp_err_t
+buf_add_time(timemsg_t *time)
+{
+    timemsg_t *dest;
+    if (ptr + 1 + sizeof(timemsg_t) > buf_end) {
+        return TP_ERR_BUFFER_FULL;
+    }
+
+    *(uint8_t *)ptr = svc_time;
+    dest = ptr + 1;
+    memcpy(dest, time, sizeof(timemsg_t));
+    dest->next = NULL;
+    ptr += 1 + sizeof(timemsg_t);
+    total_message_size += 1;
+
+    *times_next = dest;
+    times_next = &dest->next;
+
+    return TP_ERR_SUCCESS;
+
+}
+
+
 void
 buf_iter_updates (buf_update_iter_t *out_iter, bool delta)
 {
@@ -204,6 +230,12 @@ buf_get_internal_message_length (void *buf, void *buf_end, bool stub_update,
             *out_len = 1;
         } else {
             *out_len = 1 + sizeof(client_data_t);
+        }
+    } else if (cmd == svc_time) {
+        if (stub_update) {
+            *out_len = 1;
+        } else {
+            *out_len = 1 + sizeof(timemsg_t);
         }
     } else if (cmd == TP_MSG_TYPE_PACKET_HEADER) {
         if (buf + 17 > buf_end) {
@@ -275,6 +307,10 @@ buf_write_messages (void)
             assert(msg_len >= 1);
             write_out(msg, 1);
             written += 1;
+        } else if (cmd == svc_time) {
+            assert(msg_len >= 1);
+            write_out(msg, 1);
+            written += 1;
         } else if ((cmd > 0 && cmd < TP_NUM_DEM_COMMANDS)
                     || cmd == TP_MSG_TYPE_PACKET_HEADER) {
             // Otherwise, verbatim dump the entire command.
@@ -342,6 +378,13 @@ buf_read_messages (void)
             if (rc != TP_ERR_SUCCESS) {
                 return rc;
             }
+        } else if (cmd == svc_time) {
+            timemsg_t time = {.time = -1};
+            assert(msg_len == 1);
+            rc = buf_add_time(&time);
+            if (rc != TP_ERR_SUCCESS) {
+                return rc;
+            }
         } else if ((cmd > 0 && cmd < TP_NUM_DEM_COMMANDS)
                     || cmd == TP_MSG_TYPE_PACKET_HEADER) {
             rc = buf_add_message(read_ptr, msg_len);
@@ -369,6 +412,12 @@ buf_get_client_data_list (void)
 }
 
 
+timemsg_t *
+buf_get_time_list (void)
+{
+    return times;
+}
+
 
 void
 buf_clear (void)
@@ -386,6 +435,9 @@ buf_clear (void)
 
     client_datas = NULL;
     client_data_next = &client_datas;
+
+    times = NULL;
+    times_next = &times;
 
     total_message_size = 0;
 }

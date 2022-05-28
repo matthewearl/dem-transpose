@@ -24,6 +24,7 @@ static update_t last_updates[TP_MAX_ENT];
 
 // Last client_data received
 static client_data_t last_client_data = {.flags = TP_SU_INVALID};
+static timemsg_t last_time = {.time = TP_TIME_INVALID};
 
 // `in_packet[i]` is tue iff entity `i` is in this packet.
 static bool in_packet[TP_MAX_ENT];
@@ -83,6 +84,13 @@ enc_diff_client_data (client_data_t *a, client_data_t *b,
     DIFF_FIELD(active_weapon);
     DIFF_FIELD(weapon_alpha);
     DIFF_FIELD(flags);
+}
+
+
+static void
+enc_diff_time (timemsg_t *a, timemsg_t *b, timemsg_t *out_diff)
+{
+    DIFF_FIELD(time);
 }
 
 
@@ -297,6 +305,23 @@ enc_parse_client_data (void *buf, void *buf_end, int *out_len,
 
 
 static tp_err_t
+enc_parse_time (void *buf, void *buf_end, int *out_len, timemsg_t *out_time)
+{
+    void *start_buf = buf;
+    timemsg_t s;
+
+    memset(&s, 0, sizeof(timemsg_t));
+    buf++;  // skip command
+    // actually float but read as int for accurate diffing
+    TP_READ(time, uint32, 0);
+    memcpy(out_time, &s, sizeof(timemsg_t));
+    *out_len = buf - start_buf;
+
+    return TP_ERR_SUCCESS;
+}
+
+
+static tp_err_t
 enc_parse_baseline (void *buf, void *buf_end, int version, int *out_len)
 {
     void *buf_start = buf;
@@ -415,7 +440,7 @@ enc_flush(void)
         enc_flush_update_field(offsetof(update_t, field),           \
                                sizeof(((update_t *)NULL)->field),   \
                                (delta));                            \
-        DUMP_OFFSET_INFO(update, field, delta);                     \
+        DUMP_OFFSET_INFO(update_t, field, delta);                   \
     } while (false)
     for (i = 0; i < 2; i++) {
         delta = (i == 1);
@@ -438,13 +463,15 @@ enc_flush(void)
 #undef FLUSH_UPDATE_FIELD
 
     // Write out client datas.
-#define FLUSH_CLIENT_DATA_FIELD(field)                            \
-    do {                                                          \
-        enc_flush_field((void **)client_datas,                    \
-                        offsetof(client_data_t, field),           \
-                        sizeof(((client_data_t *)NULL)->field));  \
-        DUMP_OFFSET_INFO(client_data, field, 1);                  \
+#define FLUSH_FIELD(list, type, field)                   \
+    do {                                                 \
+        enc_flush_field((void **)list,                   \
+                        offsetof(type, field),           \
+                        sizeof(((type *)NULL)->field));  \
+        DUMP_OFFSET_INFO(type, field, 1);         \
     } while (false)
+#define FLUSH_CLIENT_DATA_FIELD(field)                   \
+        FLUSH_FIELD(client_datas, client_data_t, field)
 
     client_datas = buf_get_client_data_list();
     FLUSH_CLIENT_DATA_FIELD(view_height);
@@ -470,6 +497,9 @@ enc_flush(void)
     FLUSH_CLIENT_DATA_FIELD(flags);
 #undef FLUSH_CLIENT_DATA_FIELD
 
+    FLUSH_FIELD(buf_get_time_list(), timemsg_t, time);
+
+#undef FLUSH_FIELD
 #undef DUMP_OFFSET_INFO
 
     buf_clear();
@@ -538,6 +568,28 @@ enc_compress_message(void *buf, void *buf_end, void **out_buf,
                 if (rc == TP_ERR_BUFFER_FULL) {
                     enc_flush();
                     rc = buf_add_client_data(&client_data_to_add);
+                }
+            }
+            if (rc == TP_ERR_SUCCESS) {
+                buf += msg_len;
+            }
+        } else if (cmd == svc_time) {
+            timemsg_t time, time_to_add;
+            rc = enc_parse_time(buf, buf_end, &msg_len, &time);
+            if (rc == TP_ERR_SUCCESS) {
+                if (last_time.time == TP_TIME_INVALID) {
+                    // Add a delta.
+                    enc_diff_time(&last_time, &time, &time_to_add);
+                } else {
+                    // Add initial value.
+                    memcpy(&time_to_add, &time, sizeof(timemsg_t));
+                }
+                memcpy(&last_time, &time, sizeof(timemsg_t));
+
+                rc = buf_add_time(&time_to_add);
+                if (rc == TP_ERR_BUFFER_FULL) {
+                    enc_flush();
+                    rc = buf_add_time(&time_to_add);
                 }
             }
             if (rc == TP_ERR_SUCCESS) {
