@@ -91,6 +91,40 @@ predictable way, which could explain the improved ratios.
 
 The full data can be [downloaded as a CSV here](/results/size_comparison.csv).
 
+## Analysis of a single demo
+
+Here's a look at the [biggest demo on SDA](https://www.youtube.com/watch?v=oOrr0gA1T_0):
+
+![breakdown of adse_3450](results/breakdown.png)
+
+More specifically, it is a look at the compression ratios attained at various
+points within the transposed demo file.  On the x-axis you can see file offset
+in the uncompressed data, and on the y-axis you can see the corresponding offset
+in the compressed data.  The slope of the line indicates the compression ratio
+at a given point.
+
+The initial section (before the first red line) is an index, which contains:
+ - Stub messages which just refer to one of the sections of tranposed data.
+ - Any message that isn't a packet header, time, update, or client data message.
+   These are a small fraction of the total data so aren't encoded.
+
+The jump around "initial update vals" is a section that encodes the initial
+values for update message runs (ie. the bits that aren't delta encoded).
+
+`model_num` through to `flags` mark the delta-encoded update message fields.
+Each marker denotes the end of the corresponding section, so the data for the
+frame field is between the `angle3` and `frame` markers.
+
+The final section denotes the client data, time, and packet header messages.
+
+A few things to note from this view:
+- The initial update vals are a short section when uncompressed, but
+  nevertheless take up a decent chunk of the compressed file due to being
+  relatively uncompressible, compared to the delta encodings.
+- Entity origins take up about half of the total compressed file size.  Maybe a
+  more clever scheme than delta encoding would help here?  Eg. fit a line /
+  curve over the run during encoding, and store the delta from this prediction.
+
 ## Conclusions
 
 Transposing helps a bit for non-AD demos, and a lot for AD demos, but at the
