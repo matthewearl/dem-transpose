@@ -668,7 +668,7 @@ tp_encode (void)
     packet_header_t packet_header;
     uint8_t packet[ENC_MAX_PACKET_SIZE];
     void *ptr;
-    void *packet_end;
+    void *packet_end = NULL;
     bool has_update;
 
     disconnected = false;
@@ -704,7 +704,7 @@ tp_encode (void)
 
         ptr = packet;
         memset(updates, 0, sizeof(updates));
-        memset(in_packet, 0, sizeof(updates));
+        memset(in_packet, 0, sizeof(in_packet));
         has_update = false;
         while (rc == TP_ERR_SUCCESS && ptr < packet_end) {
             if (disconnected) {
@@ -718,7 +718,7 @@ tp_encode (void)
         }
         if (rc == TP_ERR_SUCCESS && has_update) {
             memcpy(last_updates, updates, sizeof(last_updates));
-            memcpy(in_last_packet, in_packet, sizeof(last_updates));
+            memcpy(in_last_packet, in_packet, sizeof(in_last_packet));
         }
     }
 
