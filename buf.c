@@ -10,7 +10,7 @@
 #include "quakedef.h"
 
 
-#define BUFFER_MAX_SIZE     (5 << 20)
+#define BUFFER_MAX_SIZE     (100 << 20)
 
 
 static update_t *initial_updates[TP_MAX_ENT] = {};
