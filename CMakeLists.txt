@@ -1,5 +1,5 @@
 project(dem-transpose)
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror -Wall -O0 -ggdb")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror -Wall -Wno-address-of-packed-member -O3")
 add_executable(dem_transpose
     buf.c
     buf.h
