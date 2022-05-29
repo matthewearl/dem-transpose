@@ -50,7 +50,7 @@ static const char *tp_err_strings[] = {
 int
 main (int argc, char **argv)
 {
-    tp_err_t rc;
+    tp_err_t rc = TP_ERR_SUCCESS;
 
     in_file = stdin;
     out_file = stdout;
